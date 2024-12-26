@@ -92,7 +92,7 @@ class Deck:
     
     def draw(self):
         _card = self.cards.pop()
-        print(f"Drew {_card}. {len(self.cards) - 1} cards left.")
+        print(f"Drew {_card}. {len(self.cards)} cards left.")
         return _card
 
 
@@ -234,3 +234,4 @@ if __name__ == '__main__':
     # River
     hand.draw_board()
     print(hand.rank, hand.board)
+    print(len(deck))
