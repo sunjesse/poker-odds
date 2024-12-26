@@ -109,11 +109,10 @@ class Deck:
 class Hand:
     def __init__(self,
                  hole: Tuple[Card, Card],
-                 board: List[Card],
-                 deck: Deck):
+                 board: List[Card]
+                ):
         self.hole = hole
         self.board = board
-        self.deck = deck
         self.log = {}
     
     @property
@@ -275,8 +274,8 @@ if __name__ == '__main__':
     board = []
     
     print(hole)
-    hand = Hand(hole, board, deck)
-    villain_hand = Hand(villain_hole, board, deck)
+    hand = Hand(hole, board)
+    villain_hand = Hand(villain_hole, board)
 
     game = Game(nplayers=2,
                 hero_pos=0,
