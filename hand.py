@@ -33,6 +33,7 @@ class Suits(Enum):
     DIAMONDS = 'd'
 
 
+@total_ordering
 class Value(Enum):
     TWO = 2
     THREE = 3
@@ -48,6 +49,19 @@ class Value(Enum):
     KING = 13
     ACE = 14
     
+    def __lt__(self, other):
+        if isinstance(other, int):
+            return self.value < other
+        return self.value < other.value
+
+    def __eq__(self, other):
+        if isinstance(other, int):
+            return self.value == other
+        return self.value == other.value
+
+    def __hash__(self):
+        return hash(self.value)
+
 
 @dataclass
 class Card:
@@ -94,9 +108,6 @@ class Deck:
     def append(self, card):
         self.cards.append(card)
     
-    def pop(self):
-        self.cards.pop()
-
     def shuffle(self):
         random.shuffle(self.cards)
     
@@ -114,6 +125,7 @@ class Hand:
         self.hole = hole
         self.board = board
         self.log = {}
+        self.kicker: int = 0
     
     @property
     def rank(self) -> Rank:
@@ -145,12 +157,15 @@ class Hand:
         elif self.__is_straight(values):
             _rank = Rank.STRAIGHT
         elif max_value == 3:
+            self.kicker = max(k for k, v in values.items() if v == 3)            
             _rank = Rank.TRIPS
         elif self.__is_two_pair(values):
             _rank = Rank.TWO_PAIR
         elif max_value == 2:
+            self.kicker = max(k for k, v in values.items() if v == 2)            
             _rank = Rank.PAIR
         else:
+            self.kicker = max(card.value for card in self.hole)
             _rank = Rank.HIGH_CARD
         self.log[cards_key] = _rank
         return _rank
@@ -169,28 +184,36 @@ class Hand:
                 # Ace also counts as 1 in a straight flush 
                 if values[-1] == 14:
                     values.insert(0, 1)
-                for i in range(len(values) - 5):
-                    if values[i+4] - values[i] == 4: return True
+                for i in range(len(values) - 6, -1, -1): # iterate from back
+                    if values[i+4] - values[i] == 4:
+                        self.kicker = values[i+4]
+                        return True
         return False 
 
     def __is_quads(self, values) -> bool:
-        for v in values.values():
+        _kicker = -1
+        for k, v in values.items():
             if v == 4:
-                return True 
+                _kicker = max(_kicker, k) 
+        if _kicker >= 0:
+            self.kicker = _kicker
+            return True 
         return False
 
     def __is_full_house(self, values) -> bool:
         if len(values) < 2:
             return False
 
-        _values = sorted(values.values())
-        if _values[-2] >= 2 and _values[-1] >= 3:
+        _values = sorted(values.items(), key=lambda x: (x[1], x[0].value)) # sort by value, then by key
+        # TODO
+        if _values[-2][1] >= 2 and _values[-1][1] >= 3:
             return True
         return False
         
     def __is_flush(self, suits) -> bool:
         for v in suits.values():
             if len(v) >= 5:
+                self.kicker = max(v)
                 return True
         return False
 
@@ -200,17 +223,22 @@ class Hand:
         if Value.ACE in values:
             _values.insert(0, 1)
 
-        for i in range(len(_values) - 4):
+        for i in range(len(_values) - 5, -1, -1):
             if _values[i+4] - _values[i] == 4:
+                self.kicker = _values[i+4]
                 return True
         return False
 
     def __is_two_pair(self, values) -> bool:
-        c = 0
-        for v in values.values():
+        _kickers = []
+        for k, v in values.items():
             if v == 2:
-                c += 1
-        return c >= 2
+                _kickers.append(k.value)
+        if len(_kickers) >= 2:
+            _kickers.sort()
+            self.kicker = _kickers[-2]*100 + _kickers[-1]
+            return True
+        return False
 
 class Game:
     def __init__(self,
@@ -238,7 +266,7 @@ class Game:
         for card in self.deck:
             self.board.append(card)
             hr, vr = hero.rank, villain.rank
-            if hr > vr:
+            if (hr > vr) or (hr == vr and hero.kicker >= villain.kicker):
                 outs.append(card)
             self.board.pop()
         return outs
@@ -249,6 +277,12 @@ class Game:
         return len(outs)/len(self.deck)
 
     def draw_board(self):
+        '''
+        Randomly draw from the deck.
+        This function is not very useful for when we are calculating
+        pot odds. But it's a nice function to have to run simulations.
+            
+        '''
         if len(self.board) == 5:
             return
 
