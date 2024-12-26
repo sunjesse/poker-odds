@@ -5,6 +5,7 @@ import random
 from collections import defaultdict
 from functools import total_ordering
 
+
 @total_ordering
 class Rank(Enum):
     HIGH_CARD = 0
@@ -24,11 +25,13 @@ class Rank(Enum):
     def __eq__(self, other):
         return self.value == other.value
 
+
 class Suits(Enum):
     CLUBS = 'c' 
     HEARTS = 'h'
     SPADES = 's'
     DIAMONDS = 'd'
+
 
 class Value(Enum):
     TWO = 2
@@ -45,6 +48,7 @@ class Value(Enum):
     KING = 13
     ACE = 14
     
+
 @dataclass
 class Card:
     value: Value
@@ -69,6 +73,7 @@ class Card:
     def __repr__(self):
         return self.__str__()
 
+
 @dataclass
 class Deck:
     cards: List[Card] = field(default_factory=list) 
@@ -89,6 +94,7 @@ class Deck:
         _card = self.cards.pop()
         print(f"Drew {_card}. {len(self.cards) - 1} cards left.")
         return _card
+
 
 class Hand:
     def __init__(self,
@@ -144,6 +150,7 @@ class Hand:
         if len(self.board) == 5:
             return
 
+        # Burn a card.
         self.deck.draw()
         if len(self.board) == 0:
             for i in range(3):
@@ -206,18 +213,23 @@ class Hand:
                 c += 1
         return c >= 2
 
+
 deck = Deck()
 hole = (deck.draw(), deck.draw()) #(Card(14, Suits.CLUBS), Card(2, Suits.CLUBS))
 board = []
 print(hole)
+
 hand = Hand(hole, board, deck)
 print(hand.rank, hand.board)
 
+# Flop
 hand.draw_board()
 print(hand.rank, hand.board)
 
+# Turn
 hand.draw_board()
 print(hand.rank, hand.board)
 
+# River
 hand.draw_board()
 print(hand.rank, hand.board)
