@@ -214,22 +214,23 @@ class Hand:
         return c >= 2
 
 
-deck = Deck()
-hole = (deck.draw(), deck.draw()) #(Card(14, Suits.CLUBS), Card(2, Suits.CLUBS))
-board = []
-print(hole)
+if __init__ == '__main__':
+    deck = Deck()
+    hole = (deck.draw(), deck.draw()) #(Card(14, Suits.CLUBS), Card(2, Suits.CLUBS))
+    board = []
+    print(hole)
 
-hand = Hand(hole, board, deck)
-print(hand.rank, hand.board)
+    hand = Hand(hole, board, deck)
+    print(hand.rank, hand.board)
 
-# Flop
-hand.draw_board()
-print(hand.rank, hand.board)
+    # Flop
+    hand.draw_board()
+    print(hand.rank, hand.board)
 
-# Turn
-hand.draw_board()
-print(hand.rank, hand.board)
+    # Turn
+    hand.draw_board()
+    print(hand.rank, hand.board)
 
-# River
-hand.draw_board()
-print(hand.rank, hand.board)
+    # River
+    hand.draw_board()
+    print(hand.rank, hand.board)
