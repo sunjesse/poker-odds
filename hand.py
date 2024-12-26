@@ -206,7 +206,7 @@ class Hand:
             return False
 
         _values = sorted(values.items(), key=lambda x: (x[1], x[0].value)) # sort by value, then by key
-        # TODO
+        # TODO: Figure out kicker
         if _values[-2][1] >= 2 and _values[-1][1] >= 3:
             return True
         return False
