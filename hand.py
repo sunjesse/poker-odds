@@ -117,6 +117,7 @@ class Deck:
         return _card
 
 
+@total_ordering
 class Hand:
     def __init__(self,
                  hole: Tuple[Card, Card],
@@ -240,6 +241,12 @@ class Hand:
             return True
         return False
 
+    def __lt__(self, other):
+        return self.rank < other.rank or (self.rank == other.rank and self.kicker < other.kicker)
+
+    def __eq__(self, other):
+        return self.rank == other.rank and self.kicker == other.kicker
+
 
 class Game:
     def __init__(self,
@@ -266,8 +273,7 @@ class Game:
         villain = self.hands[self.villain_pos]
         for card in self.deck:
             self.board.append(card)
-            hr, vr = hero.rank, villain.rank
-            if (hr > vr) or (hr == vr and hero.kicker >= villain.kicker):
+            if hero >= villain:
                 outs.append(card)
             self.board.pop()
         return outs
