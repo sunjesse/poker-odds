@@ -87,10 +87,20 @@ class Deck:
         '''Convenience function.'''
         return len(self.cards)
 
+    def __iter__(self):
+        for card in self.cards:
+            yield card
+
+    def append(self, card):
+        self.cards.append(card)
+    
+    def pop(self):
+        self.cards.pop()
+
     def shuffle(self):
         random.shuffle(self.cards)
     
-    def draw(self):
+    def draw(self) -> Card:
         _card = self.cards.pop()
         print(f"Drew {_card}. {len(self.cards)} cards left.")
         return _card
@@ -107,7 +117,7 @@ class Hand:
         self.log = {}
     
     @property
-    def rank(self):
+    def rank(self) -> Rank:
         cards = list(self.hole) + self.board 
         cards_key = tuple(cards)
         if cards_key in self.log:
@@ -146,6 +156,99 @@ class Hand:
         self.log[cards_key] = _rank
         return _rank
 
+    def __is_royal_flush(self, suits) -> bool:
+        royal_flush_values = {Value.TEN, Value.JACK, Value.QUEEN, Value.KING, Value.ACE}
+        for suit, values in suits.items():
+            if royal_flush_values.issubset(values):
+                return True
+        return False
+
+    def __is_straight_flush(self, suits) -> bool:
+        for suit, values in suits.items():
+            if len(values) >= 5:
+                values = sorted(v.value for v in values)
+                # Ace also counts as 1 in a straight flush 
+                if values[-1] == 14:
+                    values.insert(0, 1)
+                for i in range(len(values) - 5):
+                    if values[i+4] - values[i] == 4: return True
+        return False 
+
+    def __is_quads(self, values) -> bool:
+        for v in values.values():
+            if v == 4:
+                return True 
+        return False
+
+    def __is_full_house(self, values) -> bool:
+        if len(values) < 2:
+            return False
+
+        _values = sorted(values.values())
+        if _values[-2] >= 2 and _values[-1] >= 3:
+            return True
+        return False
+        
+    def __is_flush(self, suits) -> bool:
+        for v in suits.values():
+            if len(v) >= 5:
+                return True
+        return False
+
+    def __is_straight(self, values) -> bool:
+        _values = sorted(k.value for k, v in values.items() if v > 0)
+        # Ace also counts as 1 in a straight. 
+        if Value.ACE in values:
+            _values.insert(0, 1)
+
+        for i in range(len(_values) - 4):
+            if _values[i+4] - _values[i] == 4:
+                return True
+        return False
+
+    def __is_two_pair(self, values) -> bool:
+        c = 0
+        for v in values.values():
+            if v == 2:
+                c += 1
+        return c >= 2
+
+class Game:
+    def __init__(self,
+                 nplayers: int,
+                 hero_pos: int, # 0 being UTG.
+                 villain_pos: int,
+                 hands: List[Hand],
+                 pot_size: float,
+                 board: List[Card],
+                 deck: Deck,
+                ):
+        self.nplayers = nplayers
+        self.hero_pos = hero_pos
+        self.villain_pos = villain_pos
+        self.hands = hands
+        self.pot_size = pot_size
+        self.board = board
+        self.deck = deck
+    
+    def outs_one_street(self) -> List[Card]:
+        if len(self.board) >= 5: return []
+        outs = []
+        hero = self.hands[self.hero_pos]
+        villain = self.hands[self.villain_pos]
+        for card in self.deck:
+            self.board.append(card)
+            hr, vr = hero.rank, villain.rank
+            if hr > vr:
+                outs.append(card)
+            self.board.pop()
+        return outs
+
+    def compute_odds(self) -> float:
+        outs = self.outs_one_street()
+        print(f"Outs are {outs}.")
+        return len(outs)/len(self.deck)
+
     def draw_board(self):
         if len(self.board) == 5:
             return
@@ -159,79 +262,43 @@ class Hand:
         elif len(self.board) in [3, 4]:
             self.board.append(self.deck.draw())
 
-    def __is_royal_flush(self, suits):
-        royal_flush_values = {Value.TEN, Value.JACK, Value.QUEEN, Value.KING, Value.ACE}
-        for suit, values in suits.items():
-            if royal_flush_values.issubset(values):
-                return True
-        return False
-
-    def __is_straight_flush(self, suits):
-        for suit, values in suits.items():
-            if len(values) >= 5:
-                values = sorted(v.value for v in values)
-                # Ace also counts as 1 in a straight flush 
-                if values[-1] == 14:
-                    values.insert(0, 1)
-                for i in range(len(values) - 5):
-                    if values[i+4] - values[i] == 4: return True
-        return False 
-
-    def __is_quads(self, values):
-        for v in values.values():
-            if v == 4:
-                return True 
-        return False
-
-    def __is_full_house(self, values):
-        _values = sorted(values.values())
-        if _values[-2] >= 2 and _values[-1] >= 3:
-            return True
-        return False
-        
-    def __is_flush(self, suits):
-        for v in suits.values():
-            if len(v) >= 5:
-                return True
-        return False
-
-    def __is_straight(self, values):
-        _values = sorted(k.value for k, v in values.items() if v > 0)
-        # Ace also counts as 1 in a straight. 
-        if Value.ACE in values:
-            _values.insert(0, 1)
-
-        for i in range(len(_values) - 4):
-            if _values[i+4] - _values[i] == 4:
-                return True
-        return False
-
-    def __is_two_pair(self, values):
-        c = 0
-        for v in values.values():
-            if v == 2:
-                c += 1
-        return c >= 2
-
+    def __iter__(self):
+        while len(self.board) < 5:
+            yield self.draw_board()
+    
+    
 
 if __name__ == '__main__':
     deck = Deck()
     hole = (deck.draw(), deck.draw()) #(Card(14, Suits.CLUBS), Card(2, Suits.CLUBS))
+    villain_hole = (deck.draw(), deck.draw())
     board = []
+    
     print(hole)
-
     hand = Hand(hole, board, deck)
-    print(hand.rank, hand.board)
+    villain_hand = Hand(villain_hole, board, deck)
 
+    game = Game(nplayers=2,
+                hero_pos=0,
+                villain_pos=1,
+                hands=[hand, villain_hand],
+                pot_size=5., 
+                board=board,
+                deck=deck,
+                )
+
+    print(game.compute_odds())
+    
     # Flop
-    hand.draw_board()
+    game.draw_board()
     print(hand.rank, hand.board)
+    print(game.compute_odds())
 
     # Turn
-    hand.draw_board()
+    game.draw_board()
     print(hand.rank, hand.board)
+    print(game.compute_odds())
 
     # River
-    hand.draw_board()
+    game.draw_board()
     print(hand.rank, hand.board)
-    print(len(deck))
