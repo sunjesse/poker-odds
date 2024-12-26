@@ -214,7 +214,7 @@ class Hand:
         return c >= 2
 
 
-if __init__ == '__main__':
+if __name__ == '__main__':
     deck = Deck()
     hole = (deck.draw(), deck.draw()) #(Card(14, Suits.CLUBS), Card(2, Suits.CLUBS))
     board = []
