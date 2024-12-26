@@ -240,6 +240,7 @@ class Hand:
             return True
         return False
 
+
 class Game:
     def __init__(self,
                  nplayers: int,
