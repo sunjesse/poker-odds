@@ -9,6 +9,7 @@ class Brancher:
         self.hero = self.game.hands[self.game.hero_pos]
         self.villain = self.game.hands[self.game.villain_pos]
         self.drawn = self.__init_drawn()
+        self.memo = {}
 
     def __init_drawn(self):
         _st = set()
@@ -24,8 +25,15 @@ class Brancher:
         if len(self.game.board) > 5:
             raise Exception("Board has more than 5 cards - invalid.")
 
+        b = self.board_to_bin
+        if b in self.memo:
+            return self.memo[b]
+
         if len(self.game.board) == 5:
-            return 1. if self.hero > self.villain else 0.
+            val = 1. if self.hero > self.villain else 0.
+            self.memo[b] = val
+            return val
+
         pb = 0
         ncards = len(self.game.deck)
         for card in self.game.deck:
@@ -34,7 +42,10 @@ class Brancher:
             self.add_to_end_of_board(card)
             pb += self.branch()
             self.remove_from_end_of_board()
-        return pb / (ncards - len(self.drawn))
+
+        pb /= (ncards - len(self.drawn))
+        self.memo[b] = pb 
+        return pb 
 
     def add_to_end_of_board(self, card):
         self.game.board.append(card)
@@ -42,6 +53,13 @@ class Brancher:
 
     def remove_from_end_of_board(self):
         self.drawn.remove(self.game.board.pop())
+
+    @property 
+    def board_to_bin(self):
+        val = 0
+        for card in self.game.board:
+            val |= 1 << card.idx 
+        return val
 
 
 if __name__ == "__main__":

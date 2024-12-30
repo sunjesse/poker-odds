@@ -78,6 +78,18 @@ class Card:
         if self.value not in Value:
             raise ValueError(f"Invalid card value: {self.value}")
 
+        self._idx = None 
+        
+    @property
+    def idx(self):
+        if self._idx is None:
+            _idx = self.value.value * 4
+            for i, s in enumerate(Suits):
+                if self.suit == s:
+                    _idx += i
+            self._idx = _idx
+        return self._idx
+
     def __hash__(self):
         return hash((self.value.value, self.suit.value))
 
@@ -330,6 +342,7 @@ class Game:
 
 if __name__ == '__main__':
     deck = Deck()
+    card = deck.draw()
     hole = (deck.draw(), deck.draw()) #(Card(14, Suits.CLUBS), Card(2, Suits.CLUBS))
     villain_hole = (deck.draw(), deck.draw())
     board = []
