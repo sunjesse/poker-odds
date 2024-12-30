@@ -181,7 +181,7 @@ class Hand:
     def __is_straight_flush(self, suits) -> bool:
         for suit, values in suits.items():
             if len(values) >= 5:
-                values = sorted(v for v in values)
+                values = sorted(v.value for v in values)
                 # Ace also counts as 1 in a straight flush 
                 if values[-1] == 14:
                     values.insert(0, 1)
@@ -206,7 +206,6 @@ class Hand:
             return False
 
         _values = sorted(values.items(), key=lambda x: (x[1], x[0].value)) # sort by value, then by key
-        print(_values)
         if _values[-2][1] >= 2 and _values[-1][1] >= 3:
             # The last item of _values corresponds to the highest three-of-a-kind,
             # and the second last item corresponds to the highest pair.
@@ -255,8 +254,8 @@ class Hand:
             # Example, AcAdJdJs corresponds to the value: 1411.
             # The 14 is from the pair of aces and the 11 is from the pair of jacks.
             # Suppose we have another hand AcAdQdQs, this has value: 1412.
-            # By comparing the kicker value, we can see that 1412 > 1411 so the second
-            # hand is the winner.
+            # By comparing the kicker value, we can see that 1412 > 1411 so AcAdQdQs
+            # is the winner.
             self.kicker = _kickers[-1]*100 + _kickers[-2]
             return True
         return False
@@ -287,7 +286,8 @@ class Game:
         self.deck = deck
     
     def outs_one_street(self) -> List[Card]:
-        if len(self.board) >= 5: return []
+        if len(self.board) >= 5:
+            return []
         outs = []
         hero = self.hands[self.hero_pos]
         villain = self.hands[self.villain_pos]
