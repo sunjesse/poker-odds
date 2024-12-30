@@ -1,5 +1,6 @@
 from hand import Deck, Card, Game, Hand, Value, Suits
 
+
 class Brancher:
     def __init__(self,
                  game: Game,
@@ -31,6 +32,7 @@ class Brancher:
 
     def remove_from_end_of_board(self):
         self.drawn.remove(self.game.board.pop())
+
 
 if __name__ == "__main__":
     deck = Deck()
