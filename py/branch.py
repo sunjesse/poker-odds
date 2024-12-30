@@ -8,7 +8,17 @@ class Brancher:
         self.game = game
         self.hero = self.game.hands[self.game.hero_pos]
         self.villain = self.game.hands[self.game.villain_pos]
-        self.drawn = set(self.game.board)
+        self.drawn = self.__init_drawn()
+
+    def __init_drawn(self):
+        _st = set()
+        for card in self.game.board:
+            _st.add(card)
+
+        for hands in self.game.hands:
+            for card in hands.hole:
+                _st.add(card)
+        return _st
 
     def branch(self, layer=0) -> float:
         if len(self.game.board) > 5:
