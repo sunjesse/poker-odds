@@ -87,6 +87,7 @@ class Card:
             for i, s in enumerate(Suits):
                 if self.suit == s:
                     _idx += i
+                    break
             self._idx = _idx
         return self._idx
 
