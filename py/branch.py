@@ -20,7 +20,7 @@ class Brancher:
                 _st.add(card)
         return _st
 
-    def branch(self, layer=0) -> float:
+    def branch(self) -> float:
         if len(self.game.board) > 5:
             raise Exception("Board has more than 5 cards - invalid.")
 
@@ -32,7 +32,7 @@ class Brancher:
             if card in self.drawn:
                 continue
             self.add_to_end_of_board(card)
-            pb += self.branch(layer+1)
+            pb += self.branch()
             self.remove_from_end_of_board()
         return pb / (ncards - len(self.drawn))
 
