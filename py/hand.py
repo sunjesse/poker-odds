@@ -181,7 +181,7 @@ class Hand:
     def __is_straight_flush(self, suits) -> bool:
         for suit, values in suits.items():
             if len(values) >= 5:
-                values = sorted(v.value for v in values)
+                values = sorted(v for v in values)
                 # Ace also counts as 1 in a straight flush 
                 if values[-1] == 14:
                     values.insert(0, 1)
@@ -206,8 +206,18 @@ class Hand:
             return False
 
         _values = sorted(values.items(), key=lambda x: (x[1], x[0].value)) # sort by value, then by key
-        # TODO: Figure out kicker
+        print(_values)
         if _values[-2][1] >= 2 and _values[-1][1] >= 3:
+            # The last item of _values corresponds to the highest three-of-a-kind,
+            # and the second last item corresponds to the highest pair.
+            # As we first sorted by value count and then by the value of the card.
+            #
+            # For example, if we want to compute aces-over-kings is better than kings-over-aces,
+            # each hand will have the following kicker representation:
+            # Aces-over-kings: _values[-2:] = [(2, 13), (3, 14)] --> kicker = 1413.
+            # Kings-over-aces: _values[-2:] = [(2, 14), (3, 13)] --> kicker = 1314.
+            # Comparing the kickers here, we have Aces-over-kings > Kings-over-aces.
+            self.kicker = _values[-1][0].value*100 + _values[-2][0].value
             return True
         return False
         
@@ -237,7 +247,17 @@ class Hand:
                 _kickers.append(k.value)
         if len(_kickers) >= 2:
             _kickers.sort()
-            self.kicker = _kickers[-2]*100 + _kickers[-1]
+            # The 1000s and 100s positions correspond to highest pair
+            # and the 10s and 1s positions correspond to value of second highest pair.
+            # This way, we can numerically compute the relative strength between multiple
+            # 2 pair hands by comparing this numeric value.
+            #
+            # Example, AcAdJdJs corresponds to the value: 1411.
+            # The 14 is from the pair of aces and the 11 is from the pair of jacks.
+            # Suppose we have another hand AcAdQdQs, this has value: 1412.
+            # By comparing the kicker value, we can see that 1412 > 1411 so the second
+            # hand is the winner.
+            self.kicker = _kickers[-1]*100 + _kickers[-2]
             return True
         return False
 
