@@ -31,6 +31,8 @@ class Brancher:
 
         if len(self.game.board) == 5:
             val = 1. if self.hero > self.villain else 0.
+            if val == 1:
+                print(self.game.board)
             self.memo[b] = val
             return val
 
@@ -64,10 +66,15 @@ class Brancher:
 
 if __name__ == "__main__":
     deck = Deck()
-    hole = (Card(14, Suits.CLUBS), Card(14, Suits.DIAMONDS))
-    villain_hole = (Card(13, Suits.CLUBS), Card(13, Suits.DIAMONDS))
+    hole = (Card(5, Suits.HEARTS), Card(8, Suits.HEARTS)) #(Card(14, Suits.CLUBS), Card(14, Suits.DIAMONDS))
+    villain_hole = (Card(14, Suits.HEARTS), Card(12, Suits.HEARTS)) #(Card(13, Suits.CLUBS), Card(13, Suits.DIAMONDS))
 
-    board = [Card(11, Suits.SPADES), Card(11, Suits.DIAMONDS), Card(11, Suits.CLUBS)]
+    board = [ #[Card(11, Suits.SPADES), Card(11, Suits.DIAMONDS), Card(11, Suits.CLUBS)]
+            Card(6, Suits.DIAMONDS),
+            Card(9, Suits.HEARTS),
+            Card(14, Suits.DIAMONDS),
+            Card(4, Suits.CLUBS)
+            ]
     hand = Hand(hole, board)
     villain_hand = Hand(villain_hole, board) 
 

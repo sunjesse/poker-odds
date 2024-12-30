@@ -83,7 +83,7 @@ class Card:
     @property
     def idx(self):
         if self._idx is None:
-            _idx = self.value.value * 4
+            _idx = self.value.value * 4 - 8 # sub 8 to start from 0
             for i, s in enumerate(Suits):
                 if self.suit == s:
                     _idx += i
