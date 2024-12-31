@@ -1,6 +1,35 @@
 from hand import Deck, Card, Game, Hand, Value, Suits
 
 
+class BinarySet:
+    '''
+    Efficient bit set implementation for holding Card types.
+    There are 52 cards in total, so we need no more than 52 bits
+    to represent the ownership of a card. Each card has it's own
+    consistent index that will be used to determine existence
+    inside the set. More space and time efficient than stdlib set
+    as we leverage the constraint that we only store up to 52 cards.
+    '''
+    def __init__(self):
+        self.s = 0
+        self.length = 0
+
+    def add(self, card: Card):
+        self.s |= 1 << card.idx
+        self.length += 1
+
+    def remove(self, card: Card):
+        if (self.s >> card.idx) & 1:
+            self.s -= 1 << card.idx
+            self.length -= 1
+
+    def contains(self, card: Card) -> bool:
+        return (self.s >> card.idx) & 1 == 1
+
+    def __len__(self) -> int:
+        return self.length
+
+        
 class Brancher:
     def __init__(self,
                  game: Game,
@@ -8,21 +37,17 @@ class Brancher:
         self.game = game
         self.hero = self.game.hands[self.game.hero_pos]
         self.villains = [hand for i, hand in enumerate(self.game.hands) if i != self.game.hero_pos]
-        self.drawn_ct = 0
-        self.drawn = self.__init_drawn()
-        self.memo = {}
+        self.drawn: BinarySet = self.__init_drawn()
         print(self.villains)
 
     def __init_drawn(self) -> int:
-        _st = 0
+        _st = BinarySet()
         for card in self.game.board:
-            _st |= 1 << card.idx
-            self.drawn_ct += 1
+            _st.add(card)
 
         for hands in self.game.hands:
             for card in hands.hole:
-                _st |= 1 << card.idx
-                self.drawn_ct += 1
+                _st.add(card)
         return _st
 
     def branch(self) -> float:
@@ -35,7 +60,7 @@ class Brancher:
 
         if len(self.game.board) == 5:
             val = 0. if any(self.hero < villain for villain in self.villains) else 1.
-            if val == 1:
+            if val == 1: # Debugging only!
                 print(self.game.board, self.hero.rank)
                 for villain in self.villains: print(villain.rank)
             self.memo[b] = val
@@ -44,24 +69,22 @@ class Brancher:
         pb = 0
         ncards = len(self.game.deck)
         for card in self.game.deck:
-            if (self.drawn >> card.idx) & 1:
+            if self.drawn.contains(card):
                 continue
             self.add_to_end_of_board(card)
             pb += self.branch()
             self.remove_from_end_of_board()
 
-        pb /= (ncards - self.drawn_ct)
+        pb /= (ncards - len(self.drawn))
         self.memo[b] = pb 
         return pb 
 
     def add_to_end_of_board(self, card):
         self.game.board.append(card)
-        self.drawn |= 1 << card.idx
-        self.drawn_ct += 1
+        self.drawn.add(card)
 
     def remove_from_end_of_board(self):
-        self.drawn -= 1 << self.game.board.pop().idx
-        self.drawn_ct -= 1
+        self.drawn.remove(self.game.board.pop())
 
     @property 
     def board_to_bin(self) -> int:
