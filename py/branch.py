@@ -11,8 +11,8 @@ class BinarySet:
     as we leverage the constraint that we only store up to 52 cards.
     '''
     def __init__(self):
-        self.s = 0
-        self.length = 0
+        self.s: int = 0 # i64 as we use at most 52 bits.
+        self.length: int = 0
 
     def add(self, card: Card):
         self.s |= 1 << card.idx
@@ -34,11 +34,10 @@ class Brancher:
     def __init__(self,
                  game: Game,
                 ):
-        self.game = game
-        self.hero = self.game.hands[self.game.hero_pos]
-        self.villains = [hand for i, hand in enumerate(self.game.hands) if i != self.game.hero_pos]
+        self.game: Game = game
+        self.hero: Hand = self.game.hands[self.game.hero_pos]
+        self.villains: List[Hand] = [hand for i, hand in enumerate(self.game.hands) if i != self.game.hero_pos]
         self.drawn: BinarySet = self.__init_drawn()
-        print(self.villains)
 
     def __init_drawn(self) -> int:
         _st = BinarySet()
