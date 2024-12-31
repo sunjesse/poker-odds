@@ -142,7 +142,7 @@ class Hand:
                 ):
         self.hole = hole
         self.board = board
-        self.log = {}
+        self.memo = {}
         self.kicker: int = 0
     
     @property
@@ -151,8 +151,8 @@ class Hand:
         # Get binary representation of this set of cards combination.
         cards_key = sum(1 << card.idx for card in cards)
         
-        if cards_key in self.log:
-            return self.log[cards_key]
+        if cards_key in self.memo:
+            return self.memo[cards_key]
 
         suits = {Suits.CLUBS: [], Suits.HEARTS: [], Suits.SPADES: [], Suits.DIAMONDS: []}
         values = defaultdict(int)
@@ -185,7 +185,7 @@ class Hand:
         else:
             self.__compute_kicker_as_best_five(5, values)
             _rank = Rank.HIGH_CARD
-        self.log[cards_key] = _rank
+        self.memo[cards_key] = _rank
         return _rank
 
     def __is_royal_flush(self, suits: dict[Suits, List[Value]]) -> bool:
