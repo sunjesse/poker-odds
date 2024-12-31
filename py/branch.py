@@ -5,7 +5,7 @@ class BinarySet:
     '''
     Efficient bit set implementation for holding Card types.
     There are 52 cards in total, so we need no more than 52 bits
-    to represent the ownership of a card. Each card has it's own
+    to represent the ownership of all cards. Each card has it's own
     consistent index that will be used to determine existence
     inside the set. More space and time efficient than stdlib set
     as we leverage the constraint that we only store up to 52 cards.
