@@ -38,6 +38,7 @@ class Brancher:
         self.hero: Hand = self.game.hands[self.game.hero_pos]
         self.villains: List[Hand] = [hand for i, hand in enumerate(self.game.hands) if i != self.game.hero_pos]
         self.drawn: BinarySet = self.__init_drawn()
+        self.memo: dict[int, float] = {}
 
     def __init_drawn(self) -> int:
         _st = BinarySet()
