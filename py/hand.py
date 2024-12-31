@@ -155,7 +155,7 @@ class Hand:
             suits[card.suit].append(card.value)
             values[card.value] += 1
 
-        max_value = max(values.values())
+        values = sorted(((k.value, v) for k, v in values.items()), key=lambda x: (x[1], x[0]))
 
         _rank = None
         if self.__is_royal_flush(suits):
@@ -170,16 +170,14 @@ class Hand:
             _rank = Rank.FLUSH
         elif self.__is_straight(values):
             _rank = Rank.STRAIGHT
-        elif max_value == 3:
-            self.kicker = max(k for k, v in values.items() if v == 3)            
+        elif self.__is_three_of_a_kind(values):
             _rank = Rank.TRIPS
         elif self.__is_two_pair(values):
             _rank = Rank.TWO_PAIR
-        elif max_value == 2:
-            self.kicker = max(k for k, v in values.items() if v == 2)            
+        elif self.__is_pair(values):
             _rank = Rank.PAIR
         else:
-            self.kicker = max(card.value for card in self.hole)
+            self.__compute_kicker_as_best_five(5, values)
             _rank = Rank.HIGH_CARD
         self.log[cards_key] = _rank
         return _rank
@@ -205,31 +203,30 @@ class Hand:
         return False 
 
     def __is_quads(self, values) -> bool:
-        _kicker = -1
-        for k, v in values.items():
-            if v == 4:
-                _kicker = max(_kicker, k) 
-        if _kicker >= 0:
-            self.kicker = _kicker
+        if values[-1][1] == 4:
+            self.kicker = values[-1][0] * 100 + values[-2][0]
             return True 
         return False
 
     def __is_full_house(self, values) -> bool:
+        '''
+        For calculation of the kicker:
+
+        The last item of _values corresponds to the highest three-of-a-kind,
+        and the second last item corresponds to the highest pair.
+        As we first sorted by value count and then by the value of the card.
+       
+        For example, if we want to compute aces-over-kings is better than kings-over-aces,
+        each hand will have the following kicker representation:
+        Aces-over-kings: _values[-2:] = [(2, 13), (3, 14)] --> kicker = 1413.
+        Kings-over-aces: _values[-2:] = [(2, 14), (3, 13)] --> kicker = 1314.
+        Comparing the kickers here, we have Aces-over-kings > Kings-over-aces.
+        '''
         if len(values) < 2:
             return False
 
-        _values = sorted(values.items(), key=lambda x: (x[1], x[0].value)) # sort by value, then by key
-        if _values[-2][1] >= 2 and _values[-1][1] >= 3:
-            # The last item of _values corresponds to the highest three-of-a-kind,
-            # and the second last item corresponds to the highest pair.
-            # As we first sorted by value count and then by the value of the card.
-            #
-            # For example, if we want to compute aces-over-kings is better than kings-over-aces,
-            # each hand will have the following kicker representation:
-            # Aces-over-kings: _values[-2:] = [(2, 13), (3, 14)] --> kicker = 1413.
-            # Kings-over-aces: _values[-2:] = [(2, 14), (3, 13)] --> kicker = 1314.
-            # Comparing the kickers here, we have Aces-over-kings > Kings-over-aces.
-            self.kicker = _values[-1][0].value*100 + _values[-2][0].value
+        if values[-2][1] >= 2 and values[-1][1] >= 3:
+            self.kicker = values[-1][0]*100 + values[-2][0]
             return True
         return False
         
@@ -241,38 +238,55 @@ class Hand:
         return False
 
     def __is_straight(self, values) -> bool:
-        _values = sorted(k.value for k, v in values.items() if v > 0)
+        keys = [k for k, v in values if v > 0]
         # Ace also counts as 1 in a straight. 
-        if Value.ACE in values:
-            _values.insert(0, 1)
+        if Value.ACE.value == keys[-1]:
+            keys.insert(0, 1)
 
-        for i in range(len(_values) - 5, -1, -1):
-            if _values[i+4] - _values[i] == 4:
-                self.kicker = _values[i+4]
+        for i in range(len(keys) - 5, -1, -1):
+            if keys[i+4] - keys[i] == 4:
+                self.kicker = keys[i+4]
                 return True
         return False
 
+    def __is_three_of_a_kind(self, values) -> bool:
+        if values[-1][1] < 3:
+            return False
+
+        self.__compute_kicker_as_best_five(3, values)
+        return True 
+        
     def __is_two_pair(self, values) -> bool:
-        _kickers = []
-        for k, v in values.items():
-            if v == 2:
-                _kickers.append(k.value)
-        if len(_kickers) >= 2:
-            _kickers.sort()
-            # The 1000s and 100s positions correspond to highest pair
-            # and the 10s and 1s positions correspond to value of second highest pair.
-            # This way, we can numerically compute the relative strength between multiple
-            # 2 pair hands by comparing this numeric value.
-            #
-            # Example, AcAdJdJs corresponds to the value: 1411.
-            # The 14 is from the pair of aces and the 11 is from the pair of jacks.
-            # Suppose we have another hand AcAdQdQs, this has value: 1412.
-            # By comparing the kicker value, we can see that 1412 > 1411 so AcAdQdQs
-            # is the winner.
-            self.kicker = _kickers[-1]*100 + _kickers[-2]
+        '''
+        For the kicker - the 1000s and 100s positions correspond to highest pair
+        and the 10s and 1s positions correspond to value of second highest pair.
+        This way, we can numerically compute the relative strength between multiple
+        2 pair hands by comparing this numeric value.
+        
+        Example, AcAdJdJs corresponds to the value: 1411.
+        The 14 is from the pair of aces and the 11 is from the pair of jacks.
+        Suppose we have another hand AcAdQdQs, this has value: 1412.
+        By comparing the kicker value, we can see that 1412 > 1411 so AcAdQdQs
+        is the winner.
+        '''
+        if len(values) > 1 and values[-1][1] == 2 and values[-2][1] == 2:
+            self.__compute_kicker_as_best_five(3, values)
             return True
         return False
 
+    def __is_pair(self, values) -> bool:
+        if values[-1][1] == 2:
+            self.__compute_kicker_as_best_five(4, values)
+            return True
+        return False
+
+    def __compute_kicker_as_best_five(self, j, values):
+        _kicker = 0
+        for i in range(max(j, len(values))):
+            _kicker *= 100
+            _kicker += values[len(values)-i-1][0]
+        self.kicker = _kicker
+        
     def __lt__(self, other):
         return self.rank < other.rank or (self.rank == other.rank and self.kicker < other.kicker)
 
@@ -351,6 +365,8 @@ if __name__ == '__main__':
     print(hole)
     hand = Hand(hole, board)
     villain_hand = Hand(villain_hole, board)
+    
+    print(sorted([hand, villain_hand]))
 
     game = Game(nplayers=2,
                 hero_pos=0,
