@@ -11,7 +11,7 @@ class Brancher:
         self.drawn = self.__init_drawn()
         self.memo = {}
 
-    def __init_drawn(self):
+    def __init_drawn(self) -> set:
         _st = set()
         for card in self.game.board:
             _st.add(card)
@@ -57,7 +57,7 @@ class Brancher:
         self.drawn.remove(self.game.board.pop())
 
     @property 
-    def board_to_bin(self):
+    def board_to_bin(self) -> int:
         val = 0
         for card in self.game.board:
             val |= 1 << card.idx 
