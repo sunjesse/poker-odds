@@ -15,11 +15,12 @@ class BinarySet:
         self.length: int = 0
 
     def add(self, card: Card):
-        self.s |= 1 << card.idx
-        self.length += 1
+        if not self.contains(card):
+            self.s |= 1 << card.idx
+            self.length += 1
 
     def remove(self, card: Card):
-        if (self.s >> card.idx) & 1:
+        if self.contains(card):
             self.s -= 1 << card.idx
             self.length -= 1
 
