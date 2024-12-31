@@ -8,17 +8,20 @@ class Brancher:
         self.game = game
         self.hero = self.game.hands[self.game.hero_pos]
         self.villain = self.game.hands[self.game.villain_pos]
+        self.drawn_ct = 0
         self.drawn = self.__init_drawn()
         self.memo = {}
 
-    def __init_drawn(self) -> set:
-        _st = set()
+    def __init_drawn(self) -> int:
+        _st = 0
         for card in self.game.board:
-            _st.add(card)
+            _st |= 1 << card.idx
+            self.drawn_ct += 1
 
         for hands in self.game.hands:
             for card in hands.hole:
-                _st.add(card)
+                _st |= 1 << card.idx
+                self.drawn_ct += 1
         return _st
 
     def branch(self) -> float:
@@ -39,22 +42,24 @@ class Brancher:
         pb = 0
         ncards = len(self.game.deck)
         for card in self.game.deck:
-            if card in self.drawn:
+            if (self.drawn >> card.idx) & 1:
                 continue
             self.add_to_end_of_board(card)
             pb += self.branch()
             self.remove_from_end_of_board()
 
-        pb /= (ncards - len(self.drawn))
+        pb /= (ncards - self.drawn_ct)
         self.memo[b] = pb 
         return pb 
 
     def add_to_end_of_board(self, card):
         self.game.board.append(card)
-        self.drawn.add(card)
+        self.drawn |= 1 << card.idx
+        self.drawn_ct += 1
 
     def remove_from_end_of_board(self):
-        self.drawn.remove(self.game.board.pop())
+        self.drawn -= 1 << self.game.board.pop().idx
+        self.drawn_ct -= 1
 
     @property 
     def board_to_bin(self) -> int:
