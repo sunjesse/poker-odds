@@ -74,12 +74,11 @@ def test_high_card():
     hand = Hand(hole, board)
     villain_hand = Hand(villain_hole, board)
 
-    print("====== PAIR WITH KICKER =====")
+    print("====== HIGH CARD TEST KICKER =====")
     print(f"Your rank: {hand.rank}\nVillain rank: {villain_hand.rank}")
     print(f"Your kicker: {hand.kicker} \nVillain kicker: {villain_hand.kicker}\nhand > villain_hand: {hand > villain_hand}")
     
     assert (hand > villain_hand) == True 
-
 
 
 
