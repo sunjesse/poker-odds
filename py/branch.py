@@ -32,7 +32,7 @@ class Brancher:
         if len(self.game.board) == 5:
             val = 1. if self.hero > self.villain else 0.
             if val == 1:
-                print(self.game.board)
+                print(self.game.board, self.hero > self.villain, self.hero.rank, self.villain.rank)
             self.memo[b] = val
             return val
 
@@ -73,7 +73,7 @@ if __name__ == "__main__":
             Card(6, Suits.DIAMONDS),
             Card(9, Suits.HEARTS),
             Card(14, Suits.DIAMONDS),
-            Card(4, Suits.CLUBS)
+            #Card(4, Suits.CLUBS)
             ]
     hand = Hand(hole, board)
     villain_hand = Hand(villain_hole, board) 
