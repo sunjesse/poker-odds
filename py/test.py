@@ -58,11 +58,29 @@ def test_pair_with_kicker():
     hand = Hand(hole, board)
     villain_hand = Hand(villain_hole, board)
 
-    print("====== TWO PAIR OVER TWO PAIR =====")
+    print("====== PAIR WITH KICKER =====")
     print(f"Your rank: {hand.rank}\nVillain rank: {villain_hand.rank}")
     print(f"Your kicker: {hand.kicker} \nVillain kicker: {villain_hand.kicker}\nhand > villain_hand: {hand > villain_hand}")
     
     assert (hand > villain_hand) == True 
+
+
+def test_high_card():    
+    deck = Deck()
+    hole = (Card(8, Suits.CLUBS), Card(11, Suits.DIAMONDS))
+    villain_hole = (Card(7, Suits.SPADES), Card(11, Suits.DIAMONDS))
+
+    board = [Card(13, Suits.SPADES), Card(12, Suits.DIAMONDS), Card(14, Suits.CLUBS)]
+    hand = Hand(hole, board)
+    villain_hand = Hand(villain_hole, board)
+
+    print("====== PAIR WITH KICKER =====")
+    print(f"Your rank: {hand.rank}\nVillain rank: {villain_hand.rank}")
+    print(f"Your kicker: {hand.kicker} \nVillain kicker: {villain_hand.kicker}\nhand > villain_hand: {hand > villain_hand}")
+    
+    assert (hand > villain_hand) == True 
+
+
 
 
 if __name__ == "__main__":
@@ -70,3 +88,4 @@ if __name__ == "__main__":
     test_two_pair_over_two_pair()
     test_same_three_of_a_kind_diff_kicker()
     test_pair_with_kicker()
+    test_high_card()

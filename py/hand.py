@@ -63,6 +63,10 @@ class Value(Enum):
         return hash(self.value)
 
 
+class Constants:
+    ROYAL_FLUSH_VALUES = {Value.TEN, Value.JACK, Value.QUEEN, Value.KING, Value.ACE}
+
+
 @dataclass
 class Card:
     value: Value
@@ -118,7 +122,7 @@ class Deck:
         for card in self.cards:
             yield card
 
-    def append(self, card):
+    def append(self, card: Card):
         self.cards.append(card)
     
     def shuffle(self):
@@ -144,7 +148,9 @@ class Hand:
     @property
     def rank(self) -> Rank:
         cards = list(self.hole) + self.board 
-        cards_key = tuple(cards)
+        # Get binary representation of this set of cards combination.
+        cards_key = sum(1 << card.idx for card in cards)
+        
         if cards_key in self.log:
             return self.log[cards_key]
 
@@ -182,14 +188,13 @@ class Hand:
         self.log[cards_key] = _rank
         return _rank
 
-    def __is_royal_flush(self, suits) -> bool:
-        royal_flush_values = {Value.TEN, Value.JACK, Value.QUEEN, Value.KING, Value.ACE}
+    def __is_royal_flush(self, suits: dict[Suits, List[Value]]) -> bool:
         for suit, values in suits.items():
-            if royal_flush_values.issubset(values):
+            if Constants.ROYAL_FLUSH_VALUES.issubset(values):
                 return True
         return False
 
-    def __is_straight_flush(self, suits) -> bool:
+    def __is_straight_flush(self, suits: dict[Suits, List[Value]]) -> bool:
         for suit, values in suits.items():
             if len(values) >= 5:
                 values = sorted(v.value for v in values)
@@ -202,13 +207,13 @@ class Hand:
                         return True
         return False 
 
-    def __is_quads(self, values) -> bool:
+    def __is_quads(self, values: List[Tuple[int, int]]) -> bool:
         if values[-1][1] == 4:
             self.kicker = values[-1][0] * 100 + values[-2][0]
             return True 
         return False
 
-    def __is_full_house(self, values) -> bool:
+    def __is_full_house(self, values: List[Tuple[int, int]]) -> bool:
         '''
         For calculation of the kicker:
 
@@ -230,14 +235,14 @@ class Hand:
             return True
         return False
         
-    def __is_flush(self, suits) -> bool:
+    def __is_flush(self, suits: dict[Suits, List[Value]]) -> bool:
         for v in suits.values():
             if len(v) >= 5:
                 self.kicker = max(v)
                 return True
         return False
 
-    def __is_straight(self, values) -> bool:
+    def __is_straight(self, values: List[Tuple[int, int]]) -> bool:
         keys = [k for k, v in values if v > 0]
         # Ace also counts as 1 in a straight. 
         if Value.ACE.value == keys[-1]:
@@ -249,14 +254,14 @@ class Hand:
                 return True
         return False
 
-    def __is_three_of_a_kind(self, values) -> bool:
+    def __is_three_of_a_kind(self, values: List[Tuple[int, int]]) -> bool:
         if values[-1][1] < 3:
             return False
 
         self.__compute_kicker_as_best_five(3, values)
         return True 
         
-    def __is_two_pair(self, values) -> bool:
+    def __is_two_pair(self, values: List[Tuple[int, int]]) -> bool:
         '''
         For the kicker - the 1000s and 100s positions correspond to highest pair
         and the 10s and 1s positions correspond to value of second highest pair.
@@ -274,15 +279,15 @@ class Hand:
             return True
         return False
 
-    def __is_pair(self, values) -> bool:
+    def __is_pair(self, values: List[Tuple[int, int]]) -> bool:
         if values[-1][1] == 2:
             self.__compute_kicker_as_best_five(4, values)
             return True
         return False
 
-    def __compute_kicker_as_best_five(self, j, values):
+    def __compute_kicker_as_best_five(self, ubound: int, values: List[Tuple[int, int]]):
         _kicker = 0
-        for i in range(max(j, len(values))):
+        for i in range(min(ubound, len(values))):
             _kicker *= 100
             _kicker += values[len(values)-i-1][0]
         self.kicker = _kicker
@@ -357,7 +362,6 @@ class Game:
 
 if __name__ == '__main__':
     deck = Deck()
-    card = deck.draw()
     hole = (deck.draw(), deck.draw()) #(Card(14, Suits.CLUBS), Card(2, Suits.CLUBS))
     villain_hole = (deck.draw(), deck.draw())
     board = []
