@@ -209,7 +209,7 @@ class Hand:
 
     def __is_quads(self, values: List[Tuple[int, int]]) -> bool:
         if values[-1][1] == 4:
-            self.kicker = values[-1][0] * 100 + values[-2][0]
+            self.__compute_kicker_as_best_five(2, values)
             return True 
         return False
 
@@ -227,11 +227,8 @@ class Hand:
         Kings-over-aces: _values[-2:] = [(2, 14), (3, 13)] --> kicker = 1314.
         Comparing the kickers here, we have Aces-over-kings > Kings-over-aces.
         '''
-        if len(values) < 2:
-            return False
-
         if values[-2][1] >= 2 and values[-1][1] >= 3:
-            self.kicker = values[-1][0]*100 + values[-2][0]
+            self.__compute_kicker_as_best_five(2, values)
             return True
         return False
         
