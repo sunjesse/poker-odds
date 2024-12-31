@@ -7,10 +7,11 @@ class Brancher:
                 ):
         self.game = game
         self.hero = self.game.hands[self.game.hero_pos]
-        self.villain = self.game.hands[self.game.villain_pos]
+        self.villains = [hand for i, hand in enumerate(self.game.hands) if i != self.game.hero_pos]
         self.drawn_ct = 0
         self.drawn = self.__init_drawn()
         self.memo = {}
+        print(self.villains)
 
     def __init_drawn(self) -> int:
         _st = 0
@@ -33,9 +34,10 @@ class Brancher:
             return self.memo[b]
 
         if len(self.game.board) == 5:
-            val = 1. if self.hero > self.villain else 0.
+            val = 0. if any(self.hero < villain for villain in self.villains) else 1.
             if val == 1:
-                print(self.game.board, self.hero > self.villain, self.hero.rank, self.villain.rank)
+                print(self.game.board, self.hero.rank)
+                for villain in self.villains: print(villain.rank)
             self.memo[b] = val
             return val
 
@@ -71,22 +73,24 @@ class Brancher:
 
 if __name__ == "__main__":
     deck = Deck()
-    hole = (Card(5, Suits.HEARTS), Card(8, Suits.HEARTS)) #(Card(14, Suits.CLUBS), Card(14, Suits.DIAMONDS))
-    villain_hole = (Card(14, Suits.HEARTS), Card(12, Suits.HEARTS)) #(Card(13, Suits.CLUBS), Card(13, Suits.DIAMONDS))
+    hole = (Card(5, Suits.HEARTS), Card(8, Suits.HEARTS))
+    villain_hole = (Card(14, Suits.HEARTS), Card(12, Suits.HEARTS))
+    villain2_hole = (deck.draw(), deck.draw())
 
-    board = [ #[Card(11, Suits.SPADES), Card(11, Suits.DIAMONDS), Card(11, Suits.CLUBS)]
+    board = [
             Card(6, Suits.DIAMONDS),
             Card(9, Suits.HEARTS),
             Card(14, Suits.DIAMONDS),
-            #Card(4, Suits.CLUBS)
             ]
+
     hand = Hand(hole, board)
     villain_hand = Hand(villain_hole, board) 
+    villain2_hand = Hand(villain2_hole, board)
 
     game = Game(nplayers=2,
             hero_pos=0,
             villain_pos=1,
-            hands=[hand, villain_hand],
+            hands=[hand, villain_hand, villain2_hand],
             pot_size=5., 
             board=board,
             deck=deck,

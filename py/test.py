@@ -10,7 +10,7 @@ def test_full_house_over_full_house():
     hand = Hand(hole, board)
     villain_hand = Hand(villain_hole, board)
 
-    print("====== FULL HOUSE OVER FULL HOUSE =====")
+    print("\n====== FULL HOUSE OVER FULL HOUSE =====")
     print(f"Your rank: {hand.rank}\nVillain rank: {villain_hand.rank}")
     print(f"Your kicker: {hand.kicker} \nVillain kicker: {villain_hand.kicker}\nhand > villain_hand: {hand > villain_hand}")
     
@@ -26,7 +26,7 @@ def test_two_pair_over_two_pair():
     hand = Hand(hole, board)
     villain_hand = Hand(villain_hole, board)
 
-    print("====== TWO PAIR OVER TWO PAIR =====")
+    print("\n====== TWO PAIR OVER TWO PAIR =====")
     print(f"Your rank: {hand.rank}\nVillain rank: {villain_hand.rank}")
     print(f"Your kicker: {hand.kicker} \nVillain kicker: {villain_hand.kicker}\nhand > villain_hand: {hand > villain_hand}")
     
@@ -42,7 +42,7 @@ def test_same_three_of_a_kind_diff_kicker():
     hand = Hand(hole, board)
     villain_hand = Hand(villain_hole, board)
 
-    print("====== SAME THREE OF A KIND, DIFFERENT KICKER =====")
+    print("\n====== SAME THREE OF A KIND, DIFFERENT KICKER =====")
     print(f"Your rank: {hand.rank}\nVillain rank: {villain_hand.rank}")
     print(f"Your kicker: {hand.kicker} \nVillain kicker: {villain_hand.kicker}\nhand > villain_hand: {hand > villain_hand}")
     
@@ -58,7 +58,7 @@ def test_pair_with_kicker():
     hand = Hand(hole, board)
     villain_hand = Hand(villain_hole, board)
 
-    print("====== PAIR WITH KICKER =====")
+    print("\n====== PAIR WITH KICKER =====")
     print(f"Your rank: {hand.rank}\nVillain rank: {villain_hand.rank}")
     print(f"Your kicker: {hand.kicker} \nVillain kicker: {villain_hand.kicker}\nhand > villain_hand: {hand > villain_hand}")
     
@@ -74,12 +74,37 @@ def test_high_card():
     hand = Hand(hole, board)
     villain_hand = Hand(villain_hole, board)
 
-    print("====== HIGH CARD TEST KICKER =====")
+    print("\n====== HIGH CARD TEST KICKER =====")
     print(f"Your rank: {hand.rank}\nVillain rank: {villain_hand.rank}")
     print(f"Your kicker: {hand.kicker} \nVillain kicker: {villain_hand.kicker}\nhand > villain_hand: {hand > villain_hand}")
     
     assert (hand > villain_hand) == True 
 
+
+def test_multiway_showdown():    
+    deck = Deck()
+    hole = (Card(8, Suits.CLUBS), Card(11, Suits.DIAMONDS))
+    villain_hole = (Card(7, Suits.SPADES), Card(11, Suits.DIAMONDS))
+    villain2_hole = (Card(6, Suits.DIAMONDS), Card(5, Suits.DIAMONDS))
+
+    board = [
+            Card(8, Suits.SPADES),
+            Card(8, Suits.DIAMONDS),
+            Card(11, Suits.CLUBS),
+            Card(6, Suits.CLUBS),
+            Card(6, Suits.SPADES)
+            ]
+    hand = Hand(hole, board)
+    villain_hand = Hand(villain_hole, board)
+    villain2_hand = Hand(villain2_hole, board)
+
+    print("\n====== HIGH CARD TEST KICKER =====")
+    print(f"Your rank: {hand.rank}\nVillain rank: {villain_hand.rank}\nVillain 2 rank: {villain2_hand.rank}")
+    print(f"Your kicker: {hand.kicker} \nVillain kicker: {villain_hand.kicker}\nVillain 2 kicker: {villain2_hand.kicker}")
+    
+    assert (hand > villain_hand) == True 
+    assert (hand > villain2_hand) == True
+    assert (villain2_hand > villain_hand) == True
 
 
 if __name__ == "__main__":
@@ -88,3 +113,4 @@ if __name__ == "__main__":
     test_same_three_of_a_kind_diff_kicker()
     test_pair_with_kicker()
     test_high_card()
+    test_multiway_showdown()
