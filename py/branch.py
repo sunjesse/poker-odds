@@ -51,7 +51,7 @@ class Brancher:
                 _st.add(card)
         return _st
 
-    def branch(self) -> float:
+    def branch(self, debug=False) -> float:
         if len(self.game.board) > 5:
             raise Exception("Board has more than 5 cards - invalid.")
 
@@ -61,7 +61,7 @@ class Brancher:
 
         if len(self.game.board) == 5:
             val = 0. if any(True for villain in self.villains if self.hero <= villain) else 1.
-            if val == 1: # Debugging only!
+            if debug and val == 1: # Debugging only!
                 print(self.game.board, self.hero.rank)
                 for villain in self.villains: print(villain.rank)
             self.memo[b] = val
