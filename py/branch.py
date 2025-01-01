@@ -60,7 +60,7 @@ class Brancher:
             return self.memo[b]
 
         if len(self.game.board) == 5:
-            val = 0. if any(self.hero <= villain for villain in self.villains) else 1.
+            val = 0. if any(True for villain in self.villains if self.hero <= villain) else 1.
             if val == 1: # Debugging only!
                 print(self.game.board, self.hero.rank)
                 for villain in self.villains: print(villain.rank)
