@@ -300,7 +300,6 @@ class Game:
     def __init__(self,
                  nplayers: int,
                  hero_pos: int, # 0 being UTG.
-                 villain_pos: int,
                  hands: List[Hand],
                  pot_size: float,
                  board: List[Card],
@@ -308,21 +307,19 @@ class Game:
                 ):
         self.nplayers = nplayers
         self.hero_pos = hero_pos
-        self.villain_pos = villain_pos
         self.hands = hands
         self.pot_size = pot_size
         self.board = board
         self.deck = deck
-    
+
     def outs_one_street(self) -> List[Card]:
         if len(self.board) >= 5:
             return []
         outs = []
         hero = self.hands[self.hero_pos]
-        villain = self.hands[self.villain_pos]
         for card in self.deck:
             self.board.append(card)
-            if hero >= villain:
+            if not any(True for (i, villain) in enumerate(self.hands) if hero < villain and i != self.hero_pos):
                 outs.append(card)
             self.board.pop()
         return outs
@@ -371,7 +368,6 @@ if __name__ == '__main__':
 
     game = Game(nplayers=2,
                 hero_pos=0,
-                villain_pos=1,
                 hands=[hand, villain_hand],
                 pot_size=5., 
                 board=board,

@@ -113,7 +113,6 @@ if __name__ == "__main__":
 
     game = Game(nplayers=2,
             hero_pos=0,
-            villain_pos=1,
             hands=[hand, villain_hand, villain2_hand],
             pot_size=5., 
             board=board,
