@@ -132,7 +132,7 @@ impl Deck {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Hand {
     hole: (Card, Card),
     board: Rc<RefCell<Vec<Card>>>,
@@ -408,12 +408,156 @@ impl Game {
 
     fn compute_odds(&self) -> f32 {
         if let Some(outs) = self.outs_one_street() {
-            return (outs.len() as f32 / self.deck.borrow().len() as f32);
+            return outs.len() as f32 / self.deck.borrow().len() as f32;
         }
         0.
     }
 
 }
+
+
+#[derive(Debug)]
+struct BinarySet {
+    s: u64,
+    length: usize,
+}
+
+impl BinarySet {
+    fn new() -> Self {
+        BinarySet {
+            s: 0,
+            length: 0,
+        }
+    }
+
+    fn add(&mut self, idx: usize) {
+        if !self.contains(idx) {
+            self.s |= 1 << idx;
+            self.length += 1;
+        } 
+    }
+
+    fn remove(&mut self, idx: usize) {
+        if self.contains(idx) {
+            self.s -= 1 << idx;
+            self.length -= 1;
+        }
+    }
+
+    fn contains(&self, idx: usize) -> bool {
+        (self.s >> idx) & 1 == 1
+    }
+
+    fn len(&self) -> usize {
+        self.length
+    }
+}
+
+
+#[derive(Debug)]
+struct Brancher {
+    game: Rc<RefCell<Game>>,
+    hero: Rc<RefCell<Hand>>,
+    drawn: BinarySet,
+    memo: HashMap<u64, f32>,
+}
+
+impl Brancher {
+    fn new(game: Rc<RefCell<Game>>) -> Self {
+        let game_brw = game.borrow();
+
+        let hero = game_brw.hands.borrow()[game_brw.hero_pos].clone();
+
+        let mut drawn = BinarySet::new();
+        
+        for hand in game_brw.hands.borrow().iter() {
+            drawn.add(hand.hole.0.idx);
+            drawn.add(hand.hole.1.idx);
+        }
+
+        for card in game_brw.board.borrow().iter() {
+            drawn.add(card.idx);
+        }
+
+        Brancher {
+            game: game.clone(),
+            hero: Rc::new(RefCell::new(hero)),
+            drawn: drawn,
+            memo: HashMap::new(), 
+        }
+    }
+
+    fn branch(&mut self) -> f32 {
+        let b: u64 =  self.binary_board();
+
+        if self.memo.contains_key(&b) {
+            return self.memo[&b];
+        }
+
+        let game_brw = self.game.borrow();
+    
+        if game_brw.board.borrow().len() == 5 {
+            let mut hero_brw = self.hero.borrow_mut();
+            let hero_rank = hero_brw.rank();
+            let hero_kicker = hero_brw.kicker;
+
+            let beats_all = game_brw.hands.borrow_mut().iter_mut()
+                .enumerate()
+                .filter(|&(i, _)| i != game_brw.hero_pos)
+                .all(|(i, hand)| {
+                    let v = hand.rank();
+                    hero_rank > v || (hero_rank == v && hero_kicker > hand.kicker)
+                });
+            let val = if beats_all { 1. } else { 0. };
+            self.memo.insert(b, val);
+            return val;    
+        }
+
+        drop(game_brw);
+
+        let mut pb: f32 = 0.;
+        let ncards: usize = self.game.borrow().deck.borrow().len();
+
+        // TODO: Fix this, don't be cloning... temporary fix for borrowing issues.
+        let cards: Vec<_> = self.game.borrow().deck.borrow().cards.clone();
+        for card in cards.iter() {
+            if !self.drawn.contains(card.idx) {
+                self.add_to_end_of_board(card);
+                pb += self.branch();
+                self.remove_from_end_of_board();
+            }
+        }
+        pb /= (ncards - self.drawn.length) as f32;
+        self.memo.insert(b, pb);
+        pb
+    }
+
+    fn add_to_end_of_board(&mut self, card: &Card) {
+        self.game.borrow_mut().board.borrow_mut().push(*card);
+        self.drawn.add(card.idx);
+    }
+    
+    fn remove_from_end_of_board(&mut self) {
+        if let Some(card) = self.game.borrow_mut().board.borrow_mut().pop() {
+            self.drawn.remove(card.idx);
+        }
+    }
+
+    fn binary_board(&self) -> u64 {
+        let b: u64 = self.game
+                    .borrow()
+                    .board
+                    .borrow()
+                    .iter()
+                    .map(
+                        |card| 
+                        1 << card.idx)
+                    .fold(0, |acc, x| acc | x);
+        b
+    }
+}
+
+
 
 fn main() {
     if Rank::Pair < Rank::TwoPair {
@@ -438,5 +582,9 @@ fn main() {
     let hand_ref = Rc::new(RefCell::new(vec_hand));
     let deck_ref = Rc::new(RefCell::new(deck));
     let game = Game::new(2, 0, hand_ref, board_ref, deck_ref);
+
     println!("{:?} {:}", game.outs_one_street(), game.compute_odds());
+    let game_ref = Rc::new(RefCell::new(game));
+    let mut brancher = Brancher::new(game_ref);
+    println!("Equity is {:?}", brancher.branch());
 }
