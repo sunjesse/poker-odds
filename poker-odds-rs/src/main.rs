@@ -168,11 +168,14 @@ impl<'a> Hand<'a> {
         suits.entry(self.hole.0.suit)
             .or_insert(Vec::new())
             .push(self.hole.0.value as u8);
+
         suits.entry(self.hole.1.suit)
             .or_insert(Vec::new())
             .push(self.hole.1.value as u8);
+
         *_values.entry(self.hole.0.value as u8)
             .or_insert(0) += 1;
+
         *_values.entry(self.hole.1.value as u8)
             .or_insert(0) += 1;
 
@@ -180,6 +183,7 @@ impl<'a> Hand<'a> {
             suits.entry(card.suit)
                 .or_insert(Vec::new())
                 .push(card.value as u8);
+
             *_values.entry(card.value as u8).or_insert(0) += 1;  
         }
 
