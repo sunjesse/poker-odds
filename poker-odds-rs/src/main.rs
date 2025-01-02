@@ -140,7 +140,7 @@ impl Deck {
 #[derive(Debug)]
 struct Hand<'a> {
     hole: (Card, Card),
-    board: &'a mut Vec<Card>,
+    board: &'a mut Vec<Card>, // TODO: Switch to RefCell or Arc
     memo: HashMap<u64, Rank>,
     kicker: i32,
 }
