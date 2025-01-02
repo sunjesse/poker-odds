@@ -3,6 +3,8 @@ use rand::thread_rng;
 use strum_macros::EnumIter;
 use strum::IntoEnumIterator;
 use std::collections::HashMap;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 enum Rank {
@@ -61,38 +63,32 @@ enum Value {
 struct Card {
     value: Value,
     suit: Suits,
-    _idx: Option<usize>,
+    idx: usize,
 }
 
 impl Card {
     fn new(value: Value, suit: Suits) -> Self {
+        let mut _idx = value as usize * 4 - 8;
+        for (i, s) in [
+            Suits::Clubs,
+            Suits::Hearts,
+            Suits::Spades,
+            Suits::Diamonds,
+        ]
+        .iter()
+        .enumerate()
+        {
+            if suit == *s {
+                _idx += i;
+                break;
+            }
+        }
+
         Card {
             value,
             suit,
-            _idx: None,
+            idx: _idx,
         }
-    }
-
-    fn idx(&mut self) -> usize {
-        if self._idx.is_none() {
-            let mut _idx = self.value as usize * 4 - 8;
-            for (i, s) in [
-                Suits::Clubs,
-                Suits::Hearts,
-                Suits::Spades,
-                Suits::Diamonds,
-            ]
-            .iter()
-            .enumerate()
-            {
-                if self.suit == *s {
-                    _idx += i;
-                    break;
-                }
-            }
-            self._idx = Some(_idx);
-        }
-        self._idx.unwrap() 
     }
 }
 
@@ -137,15 +133,15 @@ impl Deck {
 
 
 #[derive(Debug)]
-struct Hand<'a> {
+struct Hand {
     hole: (Card, Card),
-    board: &'a mut Vec<Card>, // TODO: Switch to RefCell or Arc
+    board: Rc<RefCell<Vec<Card>>>,
     memo: HashMap<u64, Rank>,
     kicker: u16,
 }
 
-impl<'a> Hand<'a> {
-    fn new(hole: (Card, Card), board: &'a mut Vec<Card>) -> Self {
+impl Hand {
+    fn new(hole: (Card, Card), board: Rc<RefCell<Vec<Card>>>) -> Self {
         Hand {
             hole: hole,
             board: board,
@@ -155,8 +151,9 @@ impl<'a> Hand<'a> {
     }
 
     fn rank(&mut self) -> Rank {
-        let mut cards_key: u64 = 1 << self.hole.0.idx() | 1 << self.hole.1.idx() | 
-            self.board.iter_mut().map(|card| 1 << card.idx()).fold(0, |acc, x| acc | x);
+        let board = self.board.borrow();
+        let mut cards_key: u64 = 1 << self.hole.0.idx | 1 << self.hole.1.idx | 
+            board.iter().map(|card| 1 << card.idx).fold(0, |acc, x| acc | x);
 
         if self.memo.contains_key(&cards_key) {
             return self.memo[&cards_key];
@@ -179,7 +176,7 @@ impl<'a> Hand<'a> {
         *_values.entry(self.hole.1.value as u8)
             .or_insert(0) += 1;
 
-        for card in self.board.iter() {
+        for card in board.iter() {
             suits.entry(card.suit)
                 .or_insert(Vec::new())
                 .push(card.value as u8);
@@ -187,37 +184,41 @@ impl<'a> Hand<'a> {
             *_values.entry(card.value as u8).or_insert(0) += 1;  
         }
 
+        // Release the immutable borrow of self
+        drop(board);
+
         let mut values: Vec<_> = _values.into_iter()
             .map(|(k, v)| (k, v))
             .collect();
 
         values.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
 
-        let mut _rank: Option<Rank> = None;
+        let mut _rank: Rank = Rank::HighCard;
 
         if self.is_royal_flush(&suits) {
-            _rank = Some(Rank::RoyalFlush);
+            _rank = Rank::RoyalFlush;
         } else if self.is_straight_flush(&suits) {
-            _rank = Some(Rank::StraightFlush);
+            _rank = Rank::StraightFlush;
         } else if self.is_quads(&values) {
-            _rank = Some(Rank::Quads);
+            _rank = Rank::Quads;
         } else if self.is_fullhouse(&values) {
-            _rank = Some(Rank::FullHouse);
+            _rank = Rank::FullHouse;
         } else if self.is_flush(&suits) {
-            _rank = Some(Rank::Flush);
+            _rank = Rank::Flush;
         } else if self.is_straight(&values) {
-            _rank = Some(Rank::Straight);
+            _rank = Rank::Straight;
         } else if self.is_three_of_a_kind(&values) {
-            _rank = Some(Rank::Trips);
+            _rank = Rank::Trips;
         } else if self.is_two_pair(&values) {
-            _rank = Some(Rank::TwoPair);
+            _rank = Rank::TwoPair;
         } else if self.is_two_pair(&values) {
-            _rank = Some(Rank::Pair);
+            _rank = Rank::Pair;
         } else {
+            // _rank is Rank::HighCard.
             self.compute_kicker_as_best_five(2, &values);
-            _rank = Some(Rank::HighCard);
         }
-        _rank.unwrap()
+        self.memo.insert(cards_key, _rank);
+        _rank
     }
 
     fn is_royal_flush(&self, suits: &HashMap<Suits, Vec<u8>>) -> bool {
@@ -337,6 +338,88 @@ impl<'a> Hand<'a> {
         }
         self.kicker = _kicker;
     }
+
+    fn gt(&mut self, other: &mut Hand) -> bool {
+        let self_rank = self.rank();
+        let other_rank = (*other).rank();
+        return self_rank > other_rank || (self_rank == other_rank && self.kicker > other.kicker);
+    }
+}
+
+
+#[derive(Debug)]
+struct Game {
+    nplayers: usize,
+    hero_pos: usize,
+    hands: Rc<RefCell<Vec<Hand>>>,
+    board: Rc<RefCell<Vec<Card>>>,
+    deck: Rc<RefCell<Deck>>,
+}
+
+
+impl Game {
+    pub fn new(nplayers: usize,
+           hero_pos: usize,
+           hands: Rc<RefCell<Vec<Hand>>>,
+           board: Rc<RefCell<Vec<Card>>>,
+           deck: Rc<RefCell<Deck>>) -> Self {
+        
+        Game {
+            nplayers: nplayers,
+            hero_pos: hero_pos,
+            hands: hands,
+            board: board,
+            deck: deck,
+        }
+    }
+
+    fn outs_one_street(&self) -> Option<Vec<Card>> {
+        let deck = self.deck.borrow();
+
+        if self.board.borrow().len() >= 5 {
+            return None;
+        }
+
+        let mut outs: Vec<Card> = Vec::new();
+
+        let mut hands = self.hands.borrow_mut();
+
+        for card in deck.cards.iter() {
+            // not pretty but it will do since we need to scope out mut and immut (in .rank()) borrows.
+            {
+                let mut board = self.board.borrow_mut();
+                board.push(*card);
+            }
+            println!("{:?} {:?}", hands[self.hero_pos].rank(), hands[1].rank());
+            let hero_rank = hands[self.hero_pos].rank();
+            let hero_kicker = hands[self.hero_pos].kicker;
+            let beats_all = hands.iter_mut()
+                .enumerate()
+                .filter(|&(i, _)| i != self.hero_pos)
+                .all(|(i, hand)| {
+                    let v = hand.rank();
+                    hero_rank > v || (hero_rank == v && hero_kicker > hand.kicker)
+                });
+            if beats_all {
+                outs.push(*card);
+            }
+
+            {
+                let mut board = self.board.borrow_mut();
+                board.pop();
+            }
+        }
+
+        Some(outs)
+    }
+
+    fn compute_odds(&self) -> f32 {
+        if let Some(outs) = self.outs_one_street() {
+            return (outs.len() as f32 / self.deck.borrow().len() as f32);
+        }
+        0.
+    }
+
 }
 
 fn main() {
@@ -348,13 +431,19 @@ fn main() {
     let mut deck = Deck::new();
     let mut board: Vec<Card> = Vec::new();
     board.push(Card::new(Value::Ten, Suits::Hearts));
-    board.push(Card::new(Value::Eight, Suits::Hearts));
     board.push(Card::new(Value::Three, Suits::Spades));
     board.push(Card::new(Value::Two, Suits::Clubs));
     board.push(Card::new(Value::Seven, Suits::Diamonds));
     let h1 = Card::new(Value::Two, Suits::Hearts);
     let h2 = Card::new(Value::Two, Suits::Diamonds);
+    let board_ref = Rc::new(RefCell::new(board));
     deck.append(card);
-    let mut hand = Hand::new((h1, h2), &mut board);
+    let mut hand = Hand::new((h1, h2), board_ref.clone());
+    let vh = Hand::new((Card::new(Value::Three, Suits::Clubs), Card::new(Value::Three, Suits::Hearts)), board_ref.clone());
     println!("{:?}", hand.rank());
+    let vec_hand = Vec::from([hand, vh]);
+    let hand_ref = Rc::new(RefCell::new(vec_hand));
+    let deck_ref = Rc::new(RefCell::new(deck));
+    let game = Game::new(2, 0, hand_ref, board_ref, deck_ref);
+    println!("{:?} {:}", game.outs_one_street(), game.compute_odds());
 }
