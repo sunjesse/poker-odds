@@ -201,7 +201,7 @@ class Hand:
                 # Ace also counts as 1 in a straight flush 
                 if values[-1] == 14:
                     values.insert(0, 1)
-                for i in range(len(values) - 6, -1, -1): # iterate from back
+                for i in range(len(values) - 5, -1, -1): # iterate from back
                     if values[i+4] - values[i] == 4:
                         self.kicker = values[i+4]
                         return True
@@ -240,7 +240,7 @@ class Hand:
         return False
 
     def __is_straight(self, values: List[Tuple[int, int]]) -> bool:
-        keys = [k for k, v in values if v > 0]
+        keys = sorted([k for k, v in values if v > 0])
         # Ace also counts as 1 in a straight. 
         if Value.ACE.value == keys[-1]:
             keys.insert(0, 1)

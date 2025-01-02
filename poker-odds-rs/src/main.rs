@@ -114,7 +114,6 @@ impl Deck {
             }
         }
         deck.shuffle();
-        println!("{:?}", deck);
         deck
     }
 
@@ -142,7 +141,7 @@ struct Hand<'a> {
     hole: (Card, Card),
     board: &'a mut Vec<Card>, // TODO: Switch to RefCell or Arc
     memo: HashMap<u64, Rank>,
-    kicker: i32,
+    kicker: u16,
 }
 
 impl<'a> Hand<'a> {
@@ -188,11 +187,25 @@ impl<'a> Hand<'a> {
             _rank = Some(Rank::RoyalFlush);
         } else if self.is_straight_flush(&suits) {
             _rank = Some(Rank::StraightFlush);
+        } else if self.is_quads(&values) {
+            _rank = Some(Rank::Quads);
+        } else if self.is_fullhouse(&values) {
+            _rank = Some(Rank::FullHouse);
+        } else if self.is_flush(&suits) {
+            _rank = Some(Rank::Flush);
+        } else if self.is_straight(&values) {
+            _rank = Some(Rank::Straight);
+        } else if self.is_three_of_a_kind(&values) {
+            _rank = Some(Rank::Trips);
+        } else if self.is_two_pair(&values) {
+            _rank = Some(Rank::TwoPair);
+        } else if self.is_two_pair(&values) {
+            _rank = Some(Rank::Pair);
+        } else {
+            self.compute_kicker_as_best_five(2, &values);
+            _rank = Some(Rank::HighCard);
         }
-        
-        println!("{:?}", suits);
-        println!("{:?}", values);
-        Rank::HighCard
+        _rank.unwrap()
     }
 
     fn is_royal_flush(&self, suits: &HashMap<Suits, Vec<u8>>) -> bool {
@@ -204,7 +217,7 @@ impl<'a> Hand<'a> {
         false
     }
 
-    fn is_straight_flush(&self, suits: &HashMap<Suits, Vec<u8>>) -> bool {
+    fn is_straight_flush(&mut self, suits: &HashMap<Suits, Vec<u8>>) -> bool {
         for (suit, values) in suits.iter() {
             if values.len() >= 5 {
                 let mut vals: Vec<u8> = values.to_vec();
@@ -212,8 +225,9 @@ impl<'a> Hand<'a> {
                 if *vals.last().unwrap() == 14 {
                     vals.insert(0, 1);
                 }
-                for i in (0..(vals.len()-5)).rev() {
+                for i in (0..(vals.len()-4)).rev() {
                     if vals[i+4] - vals[i] == 4 {
+                        self.kicker = values[i+4] as u16;
                         return true;
                     }
                 }
@@ -221,6 +235,96 @@ impl<'a> Hand<'a> {
         }
         false
     } 
+
+    fn is_quads(&mut self, values: &Vec<(u8, u8)>) -> bool {
+        if let Some(x) = values.last() {
+            if x.1 == 4 {
+                self.compute_kicker_as_best_five(2, &values);
+                return true;
+            }
+        }
+        false
+    } 
+    
+    fn is_fullhouse(&mut self, values: &Vec<(u8, u8)>) -> bool {
+        if let (Some(x), Some(y)) = (values.last(), values.get(values.len() - 2)) {
+            if y.1 >= 2 && x.1 >= 3 {
+                self.compute_kicker_as_best_five(2, &values);
+                return true;
+            }
+        }
+        false
+    }
+
+    fn is_flush(&mut self, suits: &HashMap<Suits, Vec<u8>>) -> bool {
+        for (_, v) in suits.iter() {
+            if v.len() >= 5 {
+                self.kicker = *v.iter().max().unwrap() as u16;
+                return true;
+            }
+        }
+        false
+    }
+
+    fn is_straight(&mut self, values: &Vec<(u8, u8)>) -> bool {
+        let mut keys: Vec<u8> = values.iter().map(|(k, v)| *k).collect();
+        keys.sort();
+
+        if let Some(last) = keys.last() {
+            if *last == 14 {
+                keys.insert(0, 1);
+            }
+        }
+
+        if keys.len() >= 5 {
+            for i in (0..(keys.len()-4).max(0)).rev() {
+                if keys[i+4] == keys[i] + 4 {
+                    self.kicker = keys[i+4] as u16;
+                    return true;
+                }
+            } 
+        }
+        false
+    }
+
+    fn is_three_of_a_kind(&mut self, values: &Vec<(u8, u8)>) -> bool {
+        if let Some(x) = values.last() {
+            if x.1 == 3 {
+                self.compute_kicker_as_best_five(3, &values);
+                return true;
+            }
+        }
+        false
+    }
+
+    fn is_two_pair(&mut self, values: &Vec<(u8, u8)>) -> bool {
+        if let (Some(x), Some(y)) = (values.last(), values.get(values.len() - 2)) {
+            if x.1 == 2 && y.1 == 2 {
+                self.compute_kicker_as_best_five(3, &values);
+                return true;
+            }
+        }
+        false
+    }
+
+    fn is_pair(&mut self, values: &Vec<(u8, u8)>) -> bool {
+        if let Some(x) = values.last() {
+            if x.1 == 2 {
+                self.compute_kicker_as_best_five(4, &values);
+                return true;
+            }
+        }
+        false
+    }
+
+    fn compute_kicker_as_best_five(&mut self, ubound: usize, values: &Vec<(u8, u8)>) {
+        let mut _kicker: u16 = 0;
+        for i in 0..(values.len().min(ubound)) {
+            _kicker *= 100;
+            _kicker += values[values.len()-i-1].0 as u16;
+        }
+        self.kicker = _kicker;
+    }
 }
 
 fn main() {
@@ -232,6 +336,10 @@ fn main() {
     let mut deck = Deck::new();
     let mut board: Vec<Card> = Vec::new();
     board.push(Card::new(Value::Ten, Suits::Hearts));
+    board.push(Card::new(Value::Eight, Suits::Hearts));
+    board.push(Card::new(Value::Three, Suits::Spades));
+    board.push(Card::new(Value::Two, Suits::Clubs));
+    board.push(Card::new(Value::Seven, Suits::Diamonds));
     let h1 = Card::new(Value::Two, Suits::Hearts);
     let h2 = Card::new(Value::Two, Suits::Diamonds);
     deck.append(card);
