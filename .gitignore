@@ -1,2 +1,4 @@
 __pycache__/
 poker-rust-rs/target/
+target/
+*.swp
