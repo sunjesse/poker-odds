@@ -386,11 +386,7 @@ impl Game {
 
         for card in deck.cards.iter() {
             // not pretty but it will do since we need to scope out mut and immut (in .rank()) borrows.
-            {
-                let mut board = self.board.borrow_mut();
-                board.push(*card);
-            }
-            println!("{:?} {:?}", hands[self.hero_pos].rank(), hands[1].rank());
+            self.board.borrow_mut().push(*card);
             let hero_rank = hands[self.hero_pos].rank();
             let hero_kicker = hands[self.hero_pos].kicker;
             let beats_all = hands.iter_mut()
@@ -404,10 +400,7 @@ impl Game {
                 outs.push(*card);
             }
 
-            {
-                let mut board = self.board.borrow_mut();
-                board.pop();
-            }
+            self.board.borrow_mut().pop();
         }
 
         Some(outs)
