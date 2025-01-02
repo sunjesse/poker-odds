@@ -165,13 +165,21 @@ impl<'a> Hand<'a> {
         let mut suits: HashMap<Suits, Vec<u8>> = HashMap::new();
         let mut _values: HashMap<u8, u8> = HashMap::new();
         
-        suits.entry(self.hole.0.suit).or_insert(Vec::new()).push(self.hole.0.value as u8);
-        suits.entry(self.hole.1.suit).or_insert(Vec::new()).push(self.hole.1.value as u8);
-        *_values.entry(self.hole.0.value as u8).or_insert(0) += 1;
-        *_values.entry(self.hole.1.value as u8).or_insert(0) += 1;
+        suits.entry(self.hole.0.suit)
+            .or_insert(Vec::new())
+            .push(self.hole.0.value as u8);
+        suits.entry(self.hole.1.suit)
+            .or_insert(Vec::new())
+            .push(self.hole.1.value as u8);
+        *_values.entry(self.hole.0.value as u8)
+            .or_insert(0) += 1;
+        *_values.entry(self.hole.1.value as u8)
+            .or_insert(0) += 1;
 
         for card in self.board.iter() {
-            suits.entry(card.suit).or_insert(Vec::new()).push(card.value as u8);
+            suits.entry(card.suit)
+                .or_insert(Vec::new())
+                .push(card.value as u8);
             *_values.entry(card.value as u8).or_insert(0) += 1;  
         }
 
