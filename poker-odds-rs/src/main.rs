@@ -244,7 +244,7 @@ impl Hand {
             _rank = Rank::Trips;
         } else if self.is_two_pair(&values) {
             _rank = Rank::TwoPair;
-        } else if self.is_two_pair(&values) {
+        } else if self.is_pair(&values) {
             _rank = Rank::Pair;
         } else {
             // _rank is Rank::HighCard.
@@ -582,8 +582,15 @@ impl Brancher {
 
 
 fn main() {
+    // Note: single threaded preflop equity calculation
+    // with 2 players (so 48 active cards) takes around 61s.
+    // There are 48 choose 5 ~= 1.7m combinations of possible
+    // cards to search through.
+    // Post-flop the computation takes milliseconds.
+    // TODO: Make this calculation multithreaded
+    // to enable faster pre-flop computation.
     let mut deck = Deck::new();
-    let mut board: u64 = 1 << 3 | 1 << 4 | 1 << 5 | 1 << 6; // | 1 << 7;
+    let mut board: u64 = 1 << 3 | 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
     let h1 = Card::new(Value::Two, Suits::Hearts);
     let h2 = Card::new(Value::Two, Suits::Diamonds);
     let board_ref = Rc::new(RefCell::new(board));
