@@ -58,6 +58,27 @@ enum Value {
     Ace = 14
 }
 
+impl From<u8> for Value {
+    fn from(value: u8) -> Self {
+        match value {
+            2 => Value::Two,
+            3 => Value::Three,
+            4 => Value::Four,
+            5 => Value::Five,
+            6 => Value::Six,
+            7 => Value::Seven,
+            8 => Value::Eight,
+            9 => Value::Nine,
+            10 => Value::Ten,
+            11 => Value::Jack,
+            12 => Value::Queen,
+            13 => Value::King,
+            14 => Value::Ace,
+            _ => panic!("Invalid card value"),
+        }
+    }
+}
+
 
 #[derive(Debug, Clone, Copy)]
 struct Card {
@@ -135,25 +156,23 @@ impl Deck {
 #[derive(Debug, Clone)]
 struct Hand {
     hole: (Card, Card),
-    board: Rc<RefCell<Vec<Card>>>,
     memo: HashMap<u64, Rank>,
-    kicker: u16,
+    board: Rc<RefCell<u64>>,
+    kicker: u32,
 }
 
 impl Hand {
-    fn new(hole: (Card, Card), board: Rc<RefCell<Vec<Card>>>) -> Self {
+    fn new(hole: (Card, Card), board: Rc<RefCell<u64>>) -> Self {
         Hand {
             hole: hole,
-            board: board,
             memo: HashMap::new(),
+            board: board,
             kicker: 0, 
         } 
     }
 
     fn rank(&mut self) -> Rank {
-        let board = self.board.borrow();
-        let mut cards_key: u64 = 1 << self.hole.0.idx | 1 << self.hole.1.idx | 
-            board.iter().map(|card| 1 << card.idx).fold(0, |acc, x| acc | x);
+        let mut cards_key: u64 = 1 << self.hole.0.idx | 1 << self.hole.1.idx | *self.board.borrow(); 
 
         if self.memo.contains_key(&cards_key) {
             return self.memo[&cards_key];
@@ -176,16 +195,30 @@ impl Hand {
         *_values.entry(self.hole.1.value as u8)
             .or_insert(0) += 1;
 
-        for card in board.iter() {
-            suits.entry(card.suit)
-                .or_insert(Vec::new())
-                .push(card.value as u8);
-
-            *_values.entry(card.value as u8).or_insert(0) += 1;  
+        /*
+        Backwards Conversion:
+             suit = idx % 4;
+             value = (idx - (idx%4))/4 + 2
+        */
+        // Get state of board from binary repr.
+        let bd = self.board.borrow().clone();
+        for i in 0..52 {
+            if bd >> i & 1 == 1 {
+                let value: u8 = (i - (i%4))/4 + 2;
+                let suit: Suits = match i % 4 {
+                    0 => Suits::Clubs,
+                    1 => Suits::Hearts,
+                    2 => Suits::Diamonds,
+                    3 => Suits::Spades,
+                    _ => unreachable!(),
+                }; 
+                suits.entry(suit)
+                    .or_insert(Vec::new())
+                    .push(value);
+                *_values.entry(value).or_insert(0) += 1;
+            }
         }
 
-        // Release the immutable borrow of self
-        drop(board);
 
         let mut values: Vec<_> = _values.into_iter()
             .map(|(k, v)| (k, v))
@@ -221,6 +254,9 @@ impl Hand {
         _rank
     }
 
+    
+
+
     fn is_royal_flush(&self, suits: &HashMap<Suits, Vec<u8>>) -> bool {
         for (suit, values) in suits.iter() {
             if values.len() >= 5 && [10, 11, 12, 13, 14].iter().all(|&item| values.contains(&item)) {
@@ -240,7 +276,7 @@ impl Hand {
                 }
                 for i in (0..(vals.len()-4)).rev() {
                     if vals[i+4] - vals[i] == 4 {
-                        self.kicker = values[i+4] as u16;
+                        self.kicker = values[i+4] as u32;
                         return true;
                     }
                 }
@@ -260,10 +296,12 @@ impl Hand {
     } 
     
     fn is_fullhouse(&mut self, values: &Vec<(u8, u8)>) -> bool {
-        if let (Some(x), Some(y)) = (values.last(), values.get(values.len() - 2)) {
-            if y.1 >= 2 && x.1 >= 3 {
-                self.compute_kicker_as_best_five(2, &values);
-                return true;
+        if values.len() >= 2 {
+            if let (Some(x), Some(y)) = (values.last(), values.get(values.len() - 2)) {
+                if y.1 >= 2 && x.1 >= 3 {
+                    self.compute_kicker_as_best_five(2, &values);
+                    return true;
+                }
             }
         }
         false
@@ -272,7 +310,7 @@ impl Hand {
     fn is_flush(&mut self, suits: &HashMap<Suits, Vec<u8>>) -> bool {
         for (_, v) in suits.iter() {
             if v.len() >= 5 {
-                self.kicker = *v.iter().max().unwrap() as u16;
+                self.kicker = *v.iter().max().unwrap() as u32;
                 return true;
             }
         }
@@ -292,7 +330,7 @@ impl Hand {
         if keys.len() >= 5 {
             for i in (0..(keys.len()-4).max(0)).rev() {
                 if keys[i+4] == keys[i] + 4 {
-                    self.kicker = keys[i+4] as u16;
+                    self.kicker = keys[i+4] as u32;
                     return true;
                 }
             } 
@@ -311,10 +349,12 @@ impl Hand {
     }
 
     fn is_two_pair(&mut self, values: &Vec<(u8, u8)>) -> bool {
-        if let (Some(x), Some(y)) = (values.last(), values.get(values.len() - 2)) {
-            if x.1 == 2 && y.1 == 2 {
-                self.compute_kicker_as_best_five(3, &values);
-                return true;
+        if values.len() >= 2 {
+            if let (Some(x), Some(y)) = (values.last(), values.get(values.len() - 2)) {
+                if x.1 == 2 && y.1 == 2 {
+                    self.compute_kicker_as_best_five(3, &values);
+                    return true;
+                }
             }
         }
         false
@@ -331,10 +371,10 @@ impl Hand {
     }
 
     fn compute_kicker_as_best_five(&mut self, ubound: usize, values: &Vec<(u8, u8)>) {
-        let mut _kicker: u16 = 0;
+        let mut _kicker: u32 = 0;
         for i in 0..(values.len().min(ubound)) {
             _kicker *= 100;
-            _kicker += values[values.len()-i-1].0 as u16;
+            _kicker += values[values.len()-i-1].0 as u32;
         }
         self.kicker = _kicker;
     }
@@ -352,7 +392,7 @@ struct Game {
     nplayers: usize,
     hero_pos: usize,
     hands: Rc<RefCell<Vec<Hand>>>,
-    board: Rc<RefCell<Vec<Card>>>,
+    board: Rc<RefCell<u64>>,
     deck: Rc<RefCell<Deck>>,
 }
 
@@ -361,7 +401,7 @@ impl Game {
     pub fn new(nplayers: usize,
            hero_pos: usize,
            hands: Rc<RefCell<Vec<Hand>>>,
-           board: Rc<RefCell<Vec<Card>>>,
+           board: Rc<RefCell<u64>>,
            deck: Rc<RefCell<Deck>>) -> Self {
         
         Game {
@@ -376,7 +416,7 @@ impl Game {
     fn outs_one_street(&self) -> Option<Vec<Card>> {
         let deck = self.deck.borrow();
 
-        if self.board.borrow().len() >= 5 {
+        if self.board.borrow().count_ones() >= 5 {
             return None;
         }
 
@@ -386,7 +426,7 @@ impl Game {
 
         for card in deck.cards.iter() {
             // not pretty but it will do since we need to scope out mut and immut (in .rank()) borrows.
-            self.board.borrow_mut().push(*card);
+            *self.board.borrow_mut() |= 1 << (*card).idx;
             let hero_rank = hands[self.hero_pos].rank();
             let hero_kicker = hands[self.hero_pos].kicker;
             let beats_all = hands.iter_mut()
@@ -400,7 +440,7 @@ impl Game {
                 outs.push(*card);
             }
 
-            self.board.borrow_mut().pop();
+            *self.board.borrow_mut() -= 1 << (*card).idx;
         }
 
         Some(outs)
@@ -475,9 +515,8 @@ impl Brancher {
             drawn.add(hand.hole.1.idx);
         }
 
-        for card in game_brw.board.borrow().iter() {
-            drawn.add(card.idx);
-        }
+        // add all elements from board onto the binary set
+        drawn.s |= *game_brw.board.borrow();
 
         Brancher {
             game: game.clone(),
@@ -488,15 +527,15 @@ impl Brancher {
     }
 
     fn branch(&mut self) -> f32 {
-        let b: u64 =  self.binary_board();
+        let game_brw = self.game.borrow();
+        let b: u64 = *game_brw.board.borrow();
 
         if self.memo.contains_key(&b) {
             return self.memo[&b];
         }
 
-        let game_brw = self.game.borrow();
     
-        if game_brw.board.borrow().len() == 5 {
+        if b.count_ones() == 5 {
             let mut hero_brw = self.hero.borrow_mut();
             let hero_rank = hero_brw.rank();
             let hero_kicker = hero_brw.kicker;
@@ -516,65 +555,38 @@ impl Brancher {
         drop(game_brw);
 
         let mut pb: f32 = 0.;
-        let ncards: usize = self.game.borrow().deck.borrow().len();
-
-        // TODO: Fix this, don't be cloning... temporary fix for borrowing issues.
-        let cards: Vec<_> = self.game.borrow().deck.borrow().cards.clone();
-        for card in cards.iter() {
-            if !self.drawn.contains(card.idx) {
-                self.add_to_end_of_board(card);
+        for i in 0..52 {
+            if !self.drawn.contains(i) {
+                self.add_to_end_of_board(i);
                 pb += self.branch();
-                self.remove_from_end_of_board();
+                self.remove_from_end_of_board(i);
             }
         }
-        pb /= (ncards - self.drawn.length) as f32;
+        pb /= (52 - self.drawn.len()) as f32;
         self.memo.insert(b, pb);
         pb
     }
 
-    fn add_to_end_of_board(&mut self, card: &Card) {
-        self.game.borrow_mut().board.borrow_mut().push(*card);
-        self.drawn.add(card.idx);
+    fn add_to_end_of_board(&mut self, card_idx: usize) {
+        *self.game.borrow_mut().board.borrow_mut() |= 1 << card_idx;
+        self.drawn.add(card_idx);
     }
     
-    fn remove_from_end_of_board(&mut self) {
-        if let Some(card) = self.game.borrow_mut().board.borrow_mut().pop() {
-            self.drawn.remove(card.idx);
-        }
+    fn remove_from_end_of_board(&mut self, card_idx: usize) {
+        *self.game.borrow_mut().board.borrow_mut() -= 1 << card_idx;
+        self.drawn.remove(card_idx);
     }
 
-    fn binary_board(&self) -> u64 {
-        let b: u64 = self.game
-                    .borrow()
-                    .board
-                    .borrow()
-                    .iter()
-                    .map(
-                        |card| 
-                        1 << card.idx)
-                    .fold(0, |acc, x| acc | x);
-        b
-    }
 }
 
 
 
 fn main() {
-    if Rank::Pair < Rank::TwoPair {
-        println!("True");
-    }
-    println!("{}", Suits::Clubs.to_char()); 
-    let card = Card::new(Value::Two, Suits::Hearts);
     let mut deck = Deck::new();
-    let mut board: Vec<Card> = Vec::new();
-    board.push(Card::new(Value::Ten, Suits::Hearts));
-    board.push(Card::new(Value::Three, Suits::Spades));
-    board.push(Card::new(Value::Two, Suits::Clubs));
-    board.push(Card::new(Value::Seven, Suits::Diamonds));
+    let mut board: u64 = 1 << 3 | 1 << 4 | 1 << 5 | 1 << 6; // | 1 << 7;
     let h1 = Card::new(Value::Two, Suits::Hearts);
     let h2 = Card::new(Value::Two, Suits::Diamonds);
     let board_ref = Rc::new(RefCell::new(board));
-    deck.append(card);
     let mut hand = Hand::new((h1, h2), board_ref.clone());
     let vh = Hand::new((Card::new(Value::Three, Suits::Clubs), Card::new(Value::Three, Suits::Hearts)), board_ref.clone());
     println!("{:?}", hand.rank());
@@ -583,7 +595,6 @@ fn main() {
     let deck_ref = Rc::new(RefCell::new(deck));
     let game = Game::new(2, 0, hand_ref, board_ref, deck_ref);
 
-    println!("{:?} {:}", game.outs_one_street(), game.compute_odds());
     let game_ref = Rc::new(RefCell::new(game));
     let mut brancher = Brancher::new(game_ref);
     println!("Equity is {:?}", brancher.branch());
