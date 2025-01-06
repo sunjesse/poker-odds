@@ -227,6 +227,11 @@ impl Hand {
         values.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
 
         let mut _rank: Rank = Rank::HighCard;
+        
+        // TODO [optimization]: 
+        // Can make all these computations bitwise
+        // avoiding the need to create HashMaps, vecs,
+        // and other objects.
 
         if self.is_royal_flush(&suits) {
             _rank = Rank::RoyalFlush;
