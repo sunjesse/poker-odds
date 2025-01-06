@@ -590,7 +590,7 @@ fn main() {
     // TODO: Make this calculation multithreaded
     // to enable faster pre-flop computation.
     // Also, think of ways to bound the search post-flop to avoid
-    // unnecessary computations. I.e. if we or a villain flops the nuts, there is no
+    // unnecessary computations. I.e. if we or an opp flops the nuts, there is no
     // need to compute search the 4th and 5th layers of the tree.
     let mut deck = Deck::new();
     let mut board: u64 = 1 << 3 | 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
