@@ -589,14 +589,18 @@ fn main() {
     // Post-flop the computation takes milliseconds.
     // TODO: Make this calculation multithreaded
     // to enable faster pre-flop computation.
+    // Also, think of ways to bound the search post-flop to avoid
+    // unnecessary computations. I.e. if we or a villain flops the nuts, there is no
+    // need to compute search the 4th and 5th layers of the tree.
     let mut deck = Deck::new();
     let mut board: u64 = 1 << 3 | 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
     let h1 = Card::new(Value::Two, Suits::Hearts);
     let h2 = Card::new(Value::Two, Suits::Diamonds);
     let board_ref = Rc::new(RefCell::new(board));
     let mut hand = Hand::new((h1, h2), board_ref.clone());
-    let vh = Hand::new((Card::new(Value::Three, Suits::Clubs), Card::new(Value::Three, Suits::Hearts)), board_ref.clone());
+    let mut vh = Hand::new((Card::new(Value::Three, Suits::Clubs), Card::new(Value::Three, Suits::Hearts)), board_ref.clone());
     println!("{:?}", hand.rank());
+    println!("{:?}", vh.rank());
     let vec_hand = Vec::from([hand, vh]);
     let hand_ref = Rc::new(RefCell::new(vec_hand));
     let deck_ref = Rc::new(RefCell::new(deck));
