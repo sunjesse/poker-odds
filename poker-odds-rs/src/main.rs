@@ -229,8 +229,8 @@ impl Hand {
         let mut _rank: Rank = Rank::HighCard;
         
         // TODO [optimization]: 
-        // Can make all these computations bitwise
-        // avoiding the need to create HashMaps, vecs,
+        // Can make all these computations bitwise on u64s to
+        // avoid the need for creating HashMaps, vecs,
         // and other objects.
 
         if self.is_royal_flush(&suits) {
