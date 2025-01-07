@@ -520,10 +520,10 @@ impl Brancher {
 
         println!("Running on {:} threads.", nthreads); 
 
-        let chunk_size: usize = total_cards / nthreads;
-        let chunks: Vec<(usize, usize)> = (0..total_cards)
+        let chunk_size: usize = 52 / nthreads;
+        let chunks: Vec<(usize, usize)> = (0..52)
             .step_by(chunk_size)
-            .map(|start| (start, (start + chunk_size).min(total_cards)))
+            .map(|start| (start, (start + chunk_size).min(52)))
             .collect();
 
         let handles: Vec<_> = chunks
@@ -552,7 +552,7 @@ impl Brancher {
             sum_pb += h.join().unwrap();
         }
 
-        sum_pb / (total_cards - self.drawn.len()) as f32
+        sum_pb / (52 - self.drawn.len()) as f32
     }
 
     fn add_to_end_of_board(&mut self, card_idx: usize, board: &mut u64) {
@@ -571,7 +571,7 @@ impl Brancher {
 
 fn main() {
     // pre-flop still takes 61 seconds ish on 8 threads?
-    let mut board: u64 = 1 << 3; //| 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
+    let mut board: u64 = 1 << 3 | 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
     let h1 = Card::new(Value::Two, Suits::Hearts);
     let h2 = Card::new(Value::Two, Suits::Diamonds);
     let mut hand = Hand::new((h1, h2));
@@ -584,6 +584,6 @@ fn main() {
     println!("START: {:?}", SystemTime::now());
     let mut brancher = Brancher::new(game, board);
     let nthreads: usize = 16;
-    println!("Equity is {:?}", brancher.branc_parallel(nthreads));
+    println!("Equity is {:?}", brancher.branch_parallel(nthreads));
     println!("END: {:?}", SystemTime::now());
 }
