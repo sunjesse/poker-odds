@@ -506,10 +506,6 @@ impl Brancher {
     }
 
     fn branch_parallel(&self, nthreads: usize) -> f32 {
-        /*
-        Currently, multithreading doesn't really improve performance.
-        TODO; Need to figure out why.
-        */
         println!("Running on {:} threads.", nthreads); 
 
         let chunk_size: usize = 52 / nthreads;
