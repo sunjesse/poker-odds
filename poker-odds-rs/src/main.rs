@@ -508,13 +508,7 @@ impl Brancher {
     fn branch_parallel(&self, nthreads: usize) -> f32 {
         /*
         Currently, multithreading doesn't really improve performance.
-        I suspect it is because we are chunking by first card only,
-        and the memoization is not shared across threads. We could
-        share it although that may result in performance hit due
-        to mutex? 
-        
-        We should try chunking via first 3 cards, < 52 choose 3 ~= 22k
-        combinations.
+        TODO; Need to figure out why.
         */
         println!("Running on {:} threads.", nthreads); 
 
@@ -563,13 +557,44 @@ impl Brancher {
         *board -= 1 << card_idx;
     }
 
+    fn compute_equity(&mut self) -> f32 {
+        /*
+        Only run on multiple threads when board has < 3 cards.
+        To avoid overhead of copies.
+        */
+        let nthreads: usize = 8;
+        if self.board.count_ones() >= 3 {
+            let mut board: u64 = self.board.clone();
+            self.branch(&mut board)
+        } else {
+            self.branch_parallel(nthreads)
+        }
+    }
+
 }
 
 
 
 fn main() {
-    // pre-flop still takes 61 seconds ish on 8 threads?
-    let mut board: u64 = 1 << 3 | 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
+    /*
+    pre-flop still takes 61 seconds ish on 8 threads?
+    It seems that more threads actually slows it down
+    when board = 0. Likely due to the set of memoized
+    results goes down, so "cache miss rate" increases
+    when nthreads increases?
+
+    For example, when there is 1 card on the board:
+        1 thread: 7 seconds
+        4 threads: 8 seconds
+        8 threads: 4 seconds
+        24 threads: 6 seconds
+
+    ==> There is a balancing game between the amount
+    of threading we can do while not sacrificing
+    too much of the "cache hit rate" during memoization.
+    */
+
+    let mut board: u64 = 1 << 3; //| 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
     let h1 = Card::new(Value::Two, Suits::Hearts);
     let h2 = Card::new(Value::Two, Suits::Diamonds);
     let mut hand = Hand::new((h1, h2));
@@ -581,7 +606,6 @@ fn main() {
 
     println!("START: {:?}", SystemTime::now());
     let mut brancher = Brancher::new(game, board);
-    let nthreads: usize = 16;
-    println!("Equity is {:?}", brancher.branch_parallel(nthreads));
+    println!("Equity is {:?}", brancher.compute_equity());
     println!("END: {:?}", SystemTime::now());
 }
