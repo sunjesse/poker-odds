@@ -529,7 +529,7 @@ impl Brancher {
             .map(|(start, end)| {
                 let mut local_brancher = self.clone();
                 thread::spawn(move || {
-                    let mut pb = 0.;
+                    let mut pb: f32 = 0.;
                     let mut board: u64 = local_brancher.board;
                     println!("Spawning on thread {:?}...", thread::current().id());
                     for i in start..end {
@@ -545,7 +545,7 @@ impl Brancher {
             })
             .collect();
 
-        let mut sum_pb = 0.;
+        let mut sum_pb: f32 = 0.;
         for h in handles {
             sum_pb += h.join().unwrap();
         }
