@@ -4,6 +4,7 @@ use strum_macros::EnumIter;
 use strum::IntoEnumIterator;
 use std::collections::HashMap;
 use std::thread;
+use std::time::SystemTime;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 enum Rank {
@@ -168,8 +169,8 @@ impl Hand {
         } 
     }
 
-    fn rank(&mut self, board: u64) -> Rank {
-        let mut cards_key: u64 = 1 << self.hole.0.idx | 1 << self.hole.1.idx | board; 
+    fn rank(&mut self, board: &u64) -> Rank {
+        let mut cards_key: u64 = 1 << self.hole.0.idx | 1 << self.hole.1.idx | *board; 
 
         if self.memo.contains_key(&cards_key) {
             return self.memo[&cards_key];
@@ -199,7 +200,7 @@ impl Hand {
         */
         // Get state of board from binary repr.
         for i in 0..52 {
-            if board >> i & 1 == 1 {
+            if *board >> i & 1 == 1 {
                 let value: u8 = (i - (i%4))/4 + 2;
                 let suit: Suits = match i % 4 {
                     0 => Suits::Clubs,
@@ -470,9 +471,9 @@ impl Brancher {
         }
     }
 
-    fn branch(&mut self, mut board: u64) -> f32 {
-        if self.memo.contains_key(&board) {
-            return self.memo[&board];
+    fn branch(&mut self, board: &mut u64) -> f32 {
+        if self.memo.contains_key(board) {
+            return self.memo[board];
         }
     
         if board.count_ones() == 5 {
@@ -487,30 +488,39 @@ impl Brancher {
                     hero_rank > v || (hero_rank == v && hero_kicker > hand.kicker)
                 });
             let val = if beats_all { 1. } else { 0. };
-            self.memo.insert(board, val);
+            self.memo.insert(*board, val);
             return val;    
         }
 
         let mut pb: f32 = 0.;
         for i in 0..52 {
             if !self.drawn.contains(i) {
-                board = self.add_to_end_of_board(i, board);
+                self.add_to_end_of_board(i, board);
                 pb += self.branch(board);
-                board = self.remove_from_end_of_board(i, board);
+                self.remove_from_end_of_board(i, board);
             }
         }
         pb /= (52 - self.drawn.len()) as f32;
-        self.memo.insert(board, pb);
+        self.memo.insert(*board, pb);
         pb
     }
 
-    fn branch_parallel(&self) -> f32 {
-        let num_threads: usize = 8;
+    fn branch_parallel(&self, nthreads: usize) -> f32 {
+        /*
+        Currently, multithreading doesn't really improve performance.
+        I suspect it is because we are chunking by first card only,
+        and the memoization is not shared across threads. We could
+        share it although that may result in performance hit due
+        to mutex? 
+        
+        We should try chunking via first 3 cards, < 52 choose 3 ~= 22k
+        combinations.
+        */
         let total_cards: usize = 52;
 
-        println!("Running on {:} threads.", num_threads); 
+        println!("Running on {:} threads.", nthreads); 
 
-        let chunk_size: usize = total_cards / num_threads;
+        let chunk_size: usize = total_cards / nthreads;
         let chunks: Vec<(usize, usize)> = (0..total_cards)
             .step_by(chunk_size)
             .map(|start| (start, (start + chunk_size).min(total_cards)))
@@ -526,9 +536,9 @@ impl Brancher {
                     println!("Spawning on thread {:?}...", thread::current().id());
                     for i in start..end {
                         if !local_brancher.drawn.contains(i) {
-                            board = local_brancher.add_to_end_of_board(i, board);
-                            pb += local_brancher.branch(board);
-                            board = local_brancher.remove_from_end_of_board(i, board);
+                            local_brancher.add_to_end_of_board(i, &mut board);
+                            pb += local_brancher.branch(&mut board);
+                            local_brancher.remove_from_end_of_board(i, &mut board);
                         }
                     }
 
@@ -545,14 +555,14 @@ impl Brancher {
         sum_pb / (total_cards - self.drawn.len()) as f32
     }
 
-    fn add_to_end_of_board(&mut self, card_idx: usize, board: u64) -> u64 {
+    fn add_to_end_of_board(&mut self, card_idx: usize, board: &mut u64) {
         self.drawn.add(card_idx);
-        board | (1 << card_idx)
+        *board |= 1 << card_idx;
     }
     
-    fn remove_from_end_of_board(&mut self, card_idx: usize, board: u64) -> u64 {
+    fn remove_from_end_of_board(&mut self, card_idx: usize, board: &mut u64) {
         self.drawn.remove(card_idx);
-        board - (1 << card_idx)
+        *board -= 1 << card_idx;
     }
 
 }
@@ -561,16 +571,19 @@ impl Brancher {
 
 fn main() {
     // pre-flop still takes 61 seconds ish on 8 threads?
-    let mut board: u64 = 1 << 3 | 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
+    let mut board: u64 = 1 << 3; //| 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
     let h1 = Card::new(Value::Two, Suits::Hearts);
     let h2 = Card::new(Value::Two, Suits::Diamonds);
     let mut hand = Hand::new((h1, h2));
     let mut vh = Hand::new((Card::new(Value::Three, Suits::Clubs), Card::new(Value::Three, Suits::Hearts)));
-    println!("{:?}", hand.rank(board));
-    println!("{:?}", vh.rank(board));
+    println!("{:?}", hand.rank(&board));
+    println!("{:?}", vh.rank(&board));
     let vec_hand = Vec::from([hand, vh]);
     let game = Game::new(2, 0, vec_hand);
 
+    println!("START: {:?}", SystemTime::now());
     let mut brancher = Brancher::new(game, board);
-    println!("Equity is {:?}", brancher.branch_parallel());
+    let nthreads: usize = 16;
+    println!("Equity is {:?}", brancher.branc_parallel(nthreads));
+    println!("END: {:?}", SystemTime::now());
 }
