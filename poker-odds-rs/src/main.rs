@@ -516,8 +516,6 @@ impl Brancher {
         We should try chunking via first 3 cards, < 52 choose 3 ~= 22k
         combinations.
         */
-        let total_cards: usize = 52;
-
         println!("Running on {:} threads.", nthreads); 
 
         let chunk_size: usize = 52 / nthreads;
