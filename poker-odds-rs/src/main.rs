@@ -582,7 +582,7 @@ fn main() {
     For example, when there is 1 card on the board:
         1 thread: 7 seconds (Python takes ~8 seconds)
         4 threads: 8 seconds
-        8 threads: 4 seconds
+        8 threads: 4-6 seconds
         24 threads: 6 seconds
 
     ==> There is a balancing game between the amount
