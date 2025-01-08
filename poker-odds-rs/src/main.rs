@@ -5,6 +5,8 @@ use strum::IntoEnumIterator;
 use std::collections::HashMap;
 use std::thread;
 use std::time::SystemTime;
+use std::sync::{Arc, Mutex};
+
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 enum Rank {
@@ -388,11 +390,7 @@ struct Game {
 }
 
 impl Game {
-    pub fn new(
-        nplayers: usize,
-        hero_pos: usize,
-        hands: Vec<Hand>,
-    ) -> Self {
+    pub fn new(nplayers: usize, hero_pos: usize, hands: Vec<Hand>) -> Self {
         Game {
             nplayers,
             hero_pos,
@@ -403,14 +401,14 @@ impl Game {
 
 
 #[derive(Debug, Clone)]
-struct BinarySet {
+struct BitSet {
     s: u64,
     length: usize,
 }
 
-impl BinarySet {
+impl BitSet {
     fn new() -> Self {
-        BinarySet {
+        BitSet {
             s: 0,
             length: 0,
         }
@@ -444,16 +442,16 @@ impl BinarySet {
 struct Brancher {
     game: Game,
     hero: Hand,
-    drawn: BinarySet,
+    drawn: BitSet,
     board: u64,
-    memo: HashMap<u64, f32>,
+    memo: Arc<Mutex<HashMap<u64, f32>>>,
 }
 
 impl Brancher {
-    fn new(game: Game, board: u64) -> Self {
+    fn new(game: Game, board: u64, memo: Arc<Mutex<HashMap<u64, f32>>>) -> Self {
         let hero = game.hands[game.hero_pos].clone();
 
-        let mut drawn = BinarySet::new();
+        let mut drawn = BitSet::new();
 
         for hand in game.hands.iter() {
             drawn.add(hand.hole.0.idx);
@@ -467,13 +465,13 @@ impl Brancher {
             hero,
             drawn,
             board,
-            memo: HashMap::new(),
+            memo,
         }
     }
 
     fn branch(&mut self, board: &mut u64) -> f32 {
-        if self.memo.contains_key(board) {
-            return self.memo[board];
+        if let Some(val) = self.memo.lock().unwrap().get(board) {
+            return *val;
         }
     
         if board.count_ones() == 5 {
@@ -488,7 +486,7 @@ impl Brancher {
                     hero_rank > v || (hero_rank == v && hero_kicker > hand.kicker)
                 });
             let val = if beats_all { 1. } else { 0. };
-            self.memo.insert(*board, val);
+            self.memo.lock().unwrap().insert(*board, val);
             return val;    
         }
 
@@ -501,7 +499,7 @@ impl Brancher {
             }
         }
         pb /= (52 - self.drawn.len()) as f32;
-        self.memo.insert(*board, pb);
+        self.memo.lock().unwrap().insert(*board, pb);
         pb
     }
 
@@ -573,35 +571,30 @@ impl Brancher {
 
 fn main() {
     /*
-    pre-flop still takes 61 seconds ish on 8 threads?
-    It seems that more threads actually slows it down
-    when board = 0. Likely due to the set of memoized
-    results goes down, so "cache miss rate" increases
-    when nthreads increases?
+    By threading & sharing memo table across threads,
+    we get the following result on a board with 0 cards
+    running on 8 threads:
 
-    For example, when there is 1 card on the board:
-        1 thread: 7 seconds (Python takes ~8 seconds)
-        4 threads: 8 seconds
-        8 threads: 4-6 seconds
-        24 threads: 6 seconds
-
-    ==> There is a balancing game between the amount
-    of threading we can do while not sacrificing
-    too much of the "cache hit rate" during memoization.
+        1 thread (Python): 60 seconds 
+        1 thread (Rust): 60 seconds 
+        8 threads - Without sharing memo: 60 seconds
+        8 threads - With sharing memo: 16 seconds.
     */
 
-    let mut board: u64 = 1 << 3; //| 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
+    let mut board: u64 = 0; //1 << 3; //| 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
+
     let h1 = Card::new(Value::Two, Suits::Hearts);
     let h2 = Card::new(Value::Two, Suits::Diamonds);
+
     let mut hand = Hand::new((h1, h2));
     let mut vh = Hand::new((Card::new(Value::Three, Suits::Clubs), Card::new(Value::Three, Suits::Hearts)));
-    println!("{:?}", hand.rank(&board));
-    println!("{:?}", vh.rank(&board));
+
     let vec_hand = Vec::from([hand, vh]);
     let game = Game::new(2, 0, vec_hand);
 
     println!("START: {:?}", SystemTime::now());
-    let mut brancher = Brancher::new(game, board);
+    let mut memo = Arc::new(Mutex::new(HashMap::new()));
+    let mut brancher = Brancher::new(game, board, memo);
     println!("Equity is {:?}", brancher.compute_equity());
     println!("END: {:?}", SystemTime::now());
 }
