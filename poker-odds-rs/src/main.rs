@@ -551,11 +551,12 @@ impl Brancher {
 
     fn compute_equity(&mut self) -> f32 {
         /*
-        Only run on multiple threads when board has < 3 cards.
-        To avoid overhead of copies.
+        Run on only one thread 4 cards are
+        already on the board to avoid overhead
+        of copying and moving onto threads.
         */
         let nthreads: usize = 8;
-        if self.board.count_ones() >= 3 {
+        if self.board.count_ones() >= 4 {
             let mut board: u64 = self.board.clone();
             self.branch(&mut board)
         } else {
