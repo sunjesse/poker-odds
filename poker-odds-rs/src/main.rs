@@ -3,8 +3,10 @@ use rand::thread_rng;
 use strum_macros::EnumIter;
 use strum::IntoEnumIterator;
 use std::collections::HashMap;
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::thread;
+use std::time::SystemTime;
+use std::sync::{Arc, Mutex};
+
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 enum Rank {
@@ -157,22 +159,20 @@ impl Deck {
 struct Hand {
     hole: (Card, Card),
     memo: HashMap<u64, Rank>,
-    board: Rc<RefCell<u64>>,
     kicker: u32,
 }
 
 impl Hand {
-    fn new(hole: (Card, Card), board: Rc<RefCell<u64>>) -> Self {
+    fn new(hole: (Card, Card)) -> Self {
         Hand {
             hole: hole,
             memo: HashMap::new(),
-            board: board,
             kicker: 0, 
         } 
     }
 
-    fn rank(&mut self) -> Rank {
-        let mut cards_key: u64 = 1 << self.hole.0.idx | 1 << self.hole.1.idx | *self.board.borrow(); 
+    fn rank(&mut self, board: &u64) -> Rank {
+        let cards_key: u64 = 1 << self.hole.0.idx | 1 << self.hole.1.idx | *board; 
 
         if self.memo.contains_key(&cards_key) {
             return self.memo[&cards_key];
@@ -201,9 +201,8 @@ impl Hand {
              value = (idx - (idx%4))/4 + 2
         */
         // Get state of board from binary repr.
-        let bd = self.board.borrow().clone();
         for i in 0..52 {
-            if bd >> i & 1 == 1 {
+            if *board >> i & 1 == 1 {
                 let value: u8 = (i - (i%4))/4 + 2;
                 let suit: Suits = match i % 4 {
                     0 => Suits::Clubs,
@@ -259,11 +258,8 @@ impl Hand {
         _rank
     }
 
-    
-
-
     fn is_royal_flush(&self, suits: &HashMap<Suits, Vec<u8>>) -> bool {
-        for (suit, values) in suits.iter() {
+        for (_suit, values) in suits.iter() {
             if values.len() >= 5 && [10, 11, 12, 13, 14].iter().all(|&item| values.contains(&item)) {
                 return true;
             }
@@ -272,7 +268,7 @@ impl Hand {
     }
 
     fn is_straight_flush(&mut self, suits: &HashMap<Suits, Vec<u8>>) -> bool {
-        for (suit, values) in suits.iter() {
+        for (_suit, values) in suits.iter() {
             if values.len() >= 5 {
                 let mut vals: Vec<u8> = values.to_vec();
                 vals.sort();
@@ -323,7 +319,7 @@ impl Hand {
     }
 
     fn is_straight(&mut self, values: &Vec<(u8, u8)>) -> bool {
-        let mut keys: Vec<u8> = values.iter().map(|(k, v)| *k).collect();
+        let mut keys: Vec<u8> = values.iter().map(|(k, _)| *k).collect();
         keys.sort();
 
         if let Some(last) = keys.last() {
@@ -383,93 +379,34 @@ impl Hand {
         }
         self.kicker = _kicker;
     }
-
-    fn gt(&mut self, other: &mut Hand) -> bool {
-        let self_rank = self.rank();
-        let other_rank = (*other).rank();
-        return self_rank > other_rank || (self_rank == other_rank && self.kicker > other.kicker);
-    }
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Game {
-    nplayers: usize,
     hero_pos: usize,
-    hands: Rc<RefCell<Vec<Hand>>>,
-    board: Rc<RefCell<u64>>,
-    deck: Rc<RefCell<Deck>>,
+    hands: Vec<Hand>,
 }
-
 
 impl Game {
-    pub fn new(nplayers: usize,
-           hero_pos: usize,
-           hands: Rc<RefCell<Vec<Hand>>>,
-           board: Rc<RefCell<u64>>,
-           deck: Rc<RefCell<Deck>>) -> Self {
-        
+    pub fn new(hero_pos: usize, hands: Vec<Hand>) -> Self {
         Game {
-            nplayers: nplayers,
-            hero_pos: hero_pos,
-            hands: hands,
-            board: board,
-            deck: deck,
+            hero_pos,
+            hands,
         }
     }
-
-    fn outs_one_street(&self) -> Option<Vec<Card>> {
-        let deck = self.deck.borrow();
-
-        if self.board.borrow().count_ones() >= 5 {
-            return None;
-        }
-
-        let mut outs: Vec<Card> = Vec::new();
-
-        let mut hands = self.hands.borrow_mut();
-
-        for card in deck.cards.iter() {
-            // not pretty but it will do since we need to scope out mut and immut (in .rank()) borrows.
-            *self.board.borrow_mut() |= 1 << (*card).idx;
-            let hero_rank = hands[self.hero_pos].rank();
-            let hero_kicker = hands[self.hero_pos].kicker;
-            let beats_all = hands.iter_mut()
-                .enumerate()
-                .filter(|&(i, _)| i != self.hero_pos)
-                .all(|(i, hand)| {
-                    let v = hand.rank();
-                    hero_rank > v || (hero_rank == v && hero_kicker > hand.kicker)
-                });
-            if beats_all {
-                outs.push(*card);
-            }
-
-            *self.board.borrow_mut() -= 1 << (*card).idx;
-        }
-
-        Some(outs)
-    }
-
-    fn compute_odds(&self) -> f32 {
-        if let Some(outs) = self.outs_one_street() {
-            return outs.len() as f32 / self.deck.borrow().len() as f32;
-        }
-        0.
-    }
-
 }
 
 
-#[derive(Debug)]
-struct BinarySet {
+#[derive(Debug, Clone)]
+struct BitSet {
     s: u64,
     length: usize,
 }
 
-impl BinarySet {
+impl BitSet {
     fn new() -> Self {
-        BinarySet {
+        BitSet {
             s: 0,
             length: 0,
         }
@@ -499,87 +436,131 @@ impl BinarySet {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Brancher {
-    game: Rc<RefCell<Game>>,
-    hero: Rc<RefCell<Hand>>,
-    drawn: BinarySet,
-    memo: HashMap<u64, f32>,
+    game: Game,
+    hero: Hand,
+    drawn: BitSet,
+    board: u64,
+    memo: Arc<Mutex<HashMap<u64, f32>>>,
 }
 
 impl Brancher {
-    fn new(game: Rc<RefCell<Game>>) -> Self {
-        let game_brw = game.borrow();
+    fn new(game: Game, board: u64, memo: Arc<Mutex<HashMap<u64, f32>>>) -> Self {
+        let hero = game.hands[game.hero_pos].clone();
 
-        let hero = game_brw.hands.borrow()[game_brw.hero_pos].clone();
+        let mut drawn = BitSet::new();
 
-        let mut drawn = BinarySet::new();
-        
-        for hand in game_brw.hands.borrow().iter() {
+        for hand in game.hands.iter() {
             drawn.add(hand.hole.0.idx);
             drawn.add(hand.hole.1.idx);
         }
 
-        // add all elements from board onto the binary set
-        drawn.s |= *game_brw.board.borrow();
+        drawn.s |= board;
 
         Brancher {
-            game: game.clone(),
-            hero: Rc::new(RefCell::new(hero)),
-            drawn: drawn,
-            memo: HashMap::new(), 
+            game,
+            hero,
+            drawn,
+            board,
+            memo,
         }
     }
 
-    fn branch(&mut self) -> f32 {
-        let game_brw = self.game.borrow();
-        let b: u64 = *game_brw.board.borrow();
-
-        if self.memo.contains_key(&b) {
-            return self.memo[&b];
+    fn branch(&mut self, board: &mut u64) -> f32 {
+        if let Some(val) = self.memo.lock().unwrap().get(board) {
+            return *val;
         }
-
     
-        if b.count_ones() == 5 {
-            let mut hero_brw = self.hero.borrow_mut();
-            let hero_rank = hero_brw.rank();
-            let hero_kicker = hero_brw.kicker;
+        if board.count_ones() == 5 {
+            let hero_rank = self.hero.rank(board);
+            let hero_kicker = self.hero.kicker;
 
-            let beats_all = game_brw.hands.borrow_mut().iter_mut()
+            let beats_all = self.game.hands.iter_mut()
                 .enumerate()
-                .filter(|&(i, _)| i != game_brw.hero_pos)
-                .all(|(i, hand)| {
-                    let v = hand.rank();
+                .filter(|&(i, _)| i != self.game.hero_pos)
+                .all(|(_, hand)| {
+                    let v = hand.rank(board);
                     hero_rank > v || (hero_rank == v && hero_kicker > hand.kicker)
                 });
             let val = if beats_all { 1. } else { 0. };
-            self.memo.insert(b, val);
+            self.memo.lock().unwrap().insert(*board, val);
             return val;    
         }
-
-        drop(game_brw);
 
         let mut pb: f32 = 0.;
         for i in 0..52 {
             if !self.drawn.contains(i) {
-                self.add_to_end_of_board(i);
-                pb += self.branch();
-                self.remove_from_end_of_board(i);
+                self.add_to_end_of_board(i, board);
+                pb += self.branch(board);
+                self.remove_from_end_of_board(i, board);
             }
         }
         pb /= (52 - self.drawn.len()) as f32;
-        self.memo.insert(b, pb);
+        self.memo.lock().unwrap().insert(*board, pb);
         pb
     }
 
-    fn add_to_end_of_board(&mut self, card_idx: usize) {
-        *self.game.borrow_mut().board.borrow_mut() |= 1 << card_idx;
+    fn branch_parallel(&self, nthreads: usize) -> f32 {
+        println!("Running on {:} threads.", nthreads); 
+
+        let step: usize = 52 / nthreads;
+        let chunks: Vec<(usize, usize)> = (0..52)
+            .step_by(step)
+            .map(|s| (s, (s + step).min(52)))
+            .collect();
+
+        let handles: Vec<_> = chunks
+            .into_iter()
+            .map(|(s, e)| {
+                let mut local_brancher = self.clone();
+                thread::spawn(move || {
+                    let mut pb: f32 = 0.;
+                    let mut board: u64 = local_brancher.board;
+                    println!("Spawning on thread {:?}...", thread::current().id());
+                    for i in s..e {
+                        if !local_brancher.drawn.contains(i) {
+                            local_brancher.add_to_end_of_board(i, &mut board);
+                            pb += local_brancher.branch(&mut board);
+                            local_brancher.remove_from_end_of_board(i, &mut board);
+                        }
+                    }
+
+                    pb
+                })
+            })
+            .collect();
+
+        let mut sum_pb: f32 = 0.;
+        for h in handles {
+            sum_pb += h.join().unwrap();
+        }
+
+        sum_pb / (52 - self.drawn.len()) as f32
+    }
+
+    fn add_to_end_of_board(&mut self, card_idx: usize, board: &mut u64) {
         self.drawn.add(card_idx);
+        *board |= 1 << card_idx;
     }
     
-    fn remove_from_end_of_board(&mut self, card_idx: usize) {
-        *self.game.borrow_mut().board.borrow_mut() -= 1 << card_idx;
+    fn remove_from_end_of_board(&mut self, card_idx: usize, board: &mut u64) {
         self.drawn.remove(card_idx);
+        *board -= 1 << card_idx;
+    }
+
+    fn compute_equity(&mut self) -> f32 {
+        /*
+        Only run on multiple threads when board has < 3 cards.
+        To avoid overhead of copies.
+        */
+        let nthreads: usize = 8;
+        if self.board.count_ones() >= 3 {
+            let mut board: u64 = self.board.clone();
+            self.branch(&mut board)
+        } else {
+            self.branch_parallel(nthreads)
+        }
     }
 
 }
@@ -587,31 +568,31 @@ impl Brancher {
 
 
 fn main() {
-    // Note: single threaded preflop equity calculation
-    // with 2 players (so 48 active cards) takes around 61s.
-    // There are 48 choose 5 ~= 1.7m combinations of possible
-    // cards to search through.
-    // Post-flop the computation takes milliseconds.
-    // TODO: Make this calculation multithreaded
-    // to enable faster pre-flop computation.
-    // Also, think of ways to bound the search post-flop to avoid
-    // unnecessary computations. I.e. if we or an opp flops the nuts, there is no
-    // need to compute search the 4th and 5th layers of the tree.
-    let mut deck = Deck::new();
-    let mut board: u64 = 1 << 3 | 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
+    /*
+    By threading & sharing memo table across threads,
+    we get the following result on a board with 0 cards
+    running on 8 threads:
+
+        1 thread (Python): 60 seconds 
+        1 thread (Rust): 60 seconds 
+        8 threads - Without sharing memo: 60 seconds
+        8 threads - With sharing memo: 16 seconds.
+    */
+
+    let board: u64 = 1 << 3 | 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
+
     let h1 = Card::new(Value::Two, Suits::Hearts);
     let h2 = Card::new(Value::Two, Suits::Diamonds);
-    let board_ref = Rc::new(RefCell::new(board));
-    let mut hand = Hand::new((h1, h2), board_ref.clone());
-    let mut vh = Hand::new((Card::new(Value::Three, Suits::Clubs), Card::new(Value::Three, Suits::Hearts)), board_ref.clone());
-    println!("{:?}", hand.rank());
-    println!("{:?}", vh.rank());
-    let vec_hand = Vec::from([hand, vh]);
-    let hand_ref = Rc::new(RefCell::new(vec_hand));
-    let deck_ref = Rc::new(RefCell::new(deck));
-    let game = Game::new(2, 0, hand_ref, board_ref, deck_ref);
 
-    let game_ref = Rc::new(RefCell::new(game));
-    let mut brancher = Brancher::new(game_ref);
-    println!("Equity is {:?}", brancher.branch());
+    let hand = Hand::new((h1, h2));
+    let vh = Hand::new((Card::new(Value::Three, Suits::Clubs), Card::new(Value::Three, Suits::Hearts)));
+
+    let vec_hand = Vec::from([hand, vh]);
+    let game = Game::new(0, vec_hand);
+
+    println!("START: {:?}", SystemTime::now());
+    let memo = Arc::new(Mutex::new(HashMap::new()));
+    let mut brancher = Brancher::new(game, board, memo);
+    println!("Equity is {:?}", brancher.compute_equity());
+    println!("END: {:?}", SystemTime::now());
 }
