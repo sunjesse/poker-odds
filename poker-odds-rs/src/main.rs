@@ -632,23 +632,22 @@ fn main() {
             hs.push(Hand::from_string(x));
         }
             
-        println!("HS is {:?}", hs);
+        println!("Hands are {:?}", hs);
 
         println!("Board: ");
         let mut bd: String = String::new();
         io::stdin().read_line(&mut bd).expect("Failed to get console input");
+        // TODO: janky way of parsing input, can fix it up
         let bd: Vec<char> = bd.chars().collect();
 
         let mut board: u64 = 0;
         for i in 0..bd.len()/2 {
             let c: String = bd.iter().skip(2*i).take(2).collect();
             let card: Card = Card::from_string(c);
-            println!("Registered {:?}", card);
             board |= 1 << card.idx;
         }
         
         println!("{:?} {:?}", board, board.count_ones());
-        //let board: u64 = 1 << 3 | 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
 
         let game = Game::new(0, hs);
 
