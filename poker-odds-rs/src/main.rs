@@ -172,7 +172,7 @@ impl Hand {
     }
 
     fn rank(&mut self, board: &u64) -> Rank {
-        let mut cards_key: u64 = 1 << self.hole.0.idx | 1 << self.hole.1.idx | *board; 
+        let cards_key: u64 = 1 << self.hole.0.idx | 1 << self.hole.1.idx | *board; 
 
         if self.memo.contains_key(&cards_key) {
             return self.memo[&cards_key];
@@ -259,7 +259,7 @@ impl Hand {
     }
 
     fn is_royal_flush(&self, suits: &HashMap<Suits, Vec<u8>>) -> bool {
-        for (suit, values) in suits.iter() {
+        for (_suit, values) in suits.iter() {
             if values.len() >= 5 && [10, 11, 12, 13, 14].iter().all(|&item| values.contains(&item)) {
                 return true;
             }
@@ -268,7 +268,7 @@ impl Hand {
     }
 
     fn is_straight_flush(&mut self, suits: &HashMap<Suits, Vec<u8>>) -> bool {
-        for (suit, values) in suits.iter() {
+        for (_suit, values) in suits.iter() {
             if values.len() >= 5 {
                 let mut vals: Vec<u8> = values.to_vec();
                 vals.sort();
@@ -319,7 +319,7 @@ impl Hand {
     }
 
     fn is_straight(&mut self, values: &Vec<(u8, u8)>) -> bool {
-        let mut keys: Vec<u8> = values.iter().map(|(k, v)| *k).collect();
+        let mut keys: Vec<u8> = values.iter().map(|(k, _)| *k).collect();
         keys.sort();
 
         if let Some(last) = keys.last() {
@@ -384,15 +384,13 @@ impl Hand {
 
 #[derive(Debug, Clone)]
 struct Game {
-    nplayers: usize,
     hero_pos: usize,
     hands: Vec<Hand>,
 }
 
 impl Game {
-    pub fn new(nplayers: usize, hero_pos: usize, hands: Vec<Hand>) -> Self {
+    pub fn new(hero_pos: usize, hands: Vec<Hand>) -> Self {
         Game {
-            nplayers,
             hero_pos,
             hands,
         }
@@ -481,7 +479,7 @@ impl Brancher {
             let beats_all = self.game.hands.iter_mut()
                 .enumerate()
                 .filter(|&(i, _)| i != self.game.hero_pos)
-                .all(|(i, hand)| {
+                .all(|(_, hand)| {
                     let v = hand.rank(board);
                     hero_rank > v || (hero_rank == v && hero_kicker > hand.kicker)
                 });
@@ -506,21 +504,21 @@ impl Brancher {
     fn branch_parallel(&self, nthreads: usize) -> f32 {
         println!("Running on {:} threads.", nthreads); 
 
-        let chunk_size: usize = 52 / nthreads;
+        let step: usize = 52 / nthreads;
         let chunks: Vec<(usize, usize)> = (0..52)
-            .step_by(chunk_size)
-            .map(|start| (start, (start + chunk_size).min(52)))
+            .step_by(step)
+            .map(|s| (s, (s + step).min(52)))
             .collect();
 
         let handles: Vec<_> = chunks
             .into_iter()
-            .map(|(start, end)| {
+            .map(|(s, e)| {
                 let mut local_brancher = self.clone();
                 thread::spawn(move || {
                     let mut pb: f32 = 0.;
                     let mut board: u64 = local_brancher.board;
                     println!("Spawning on thread {:?}...", thread::current().id());
-                    for i in start..end {
+                    for i in s..e {
                         if !local_brancher.drawn.contains(i) {
                             local_brancher.add_to_end_of_board(i, &mut board);
                             pb += local_brancher.branch(&mut board);
@@ -581,19 +579,19 @@ fn main() {
         8 threads - With sharing memo: 16 seconds.
     */
 
-    let mut board: u64 = 0; //1 << 3; //| 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
+    let board: u64 = 1 << 3 | 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
 
     let h1 = Card::new(Value::Two, Suits::Hearts);
     let h2 = Card::new(Value::Two, Suits::Diamonds);
 
-    let mut hand = Hand::new((h1, h2));
-    let mut vh = Hand::new((Card::new(Value::Three, Suits::Clubs), Card::new(Value::Three, Suits::Hearts)));
+    let hand = Hand::new((h1, h2));
+    let vh = Hand::new((Card::new(Value::Three, Suits::Clubs), Card::new(Value::Three, Suits::Hearts)));
 
     let vec_hand = Vec::from([hand, vh]);
-    let game = Game::new(2, 0, vec_hand);
+    let game = Game::new(0, vec_hand);
 
     println!("START: {:?}", SystemTime::now());
-    let mut memo = Arc::new(Mutex::new(HashMap::new()));
+    let memo = Arc::new(Mutex::new(HashMap::new()));
     let mut brancher = Brancher::new(game, board, memo);
     println!("Equity is {:?}", brancher.compute_equity());
     println!("END: {:?}", SystemTime::now());
