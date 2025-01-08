@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::thread;
 use std::time::SystemTime;
 use std::sync::{Arc, Mutex};
+use std::io;
 
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
@@ -40,6 +41,16 @@ impl Suits {
             Suits::Diamonds => 'd',
         }
     }    
+    
+    fn from_char(c: char) -> Self {
+        match c {
+            'c' => Suits::Clubs,
+            'h' => Suits::Hearts,
+            's' => Suits::Spades,
+            'd' => Suits::Diamonds,
+             _  => panic!("not a valid char"),
+        }
+    }
 }
 
 
@@ -113,6 +124,21 @@ impl Card {
             idx: _idx,
         }
     }
+
+    fn from_string(s: String) -> Self {
+        let s: Vec<u8> = s.chars().map(|x| x as u8).collect();
+        let value: u8 = match s[0] {
+            65 => 14,
+            75 => 13,
+            81 => 12,
+            74 => 11,
+            84 => 10,
+            50..=57 => s[0] - 48,
+            _ => panic!("Not a valid value"),
+        };
+        let suit: Suits = Suits::from_char(s[1] as char);
+        Self::new(Value::from(value), suit) 
+    }
 }
 
 
@@ -169,6 +195,12 @@ impl Hand {
             memo: HashMap::new(),
             kicker: 0, 
         } 
+    }
+
+    fn from_string(s: String) -> Self {
+        let h1: String = s.chars().take(2).collect();
+        let h2: String = s.chars().skip(2).take(2).collect();
+        Hand::new((Card::from_string(h1), Card::from_string(h2)))
     }
 
     fn rank(&mut self, board: &u64) -> Rank {
@@ -580,20 +612,50 @@ fn main() {
         8 threads - With sharing memo: 16 seconds.
     */
 
-    let board: u64 = 1 << 3 | 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
+    loop {
+        println!("# active players:");
+        let mut nplayers = String::new();
+        io::stdin().read_line(&mut nplayers).expect("Failed to get console input");
+        let nplayers = nplayers.trim().parse::<i32>().expect("Failed to parse int");
 
-    let h1 = Card::new(Value::Two, Suits::Hearts);
-    let h2 = Card::new(Value::Two, Suits::Diamonds);
+        let mut hs: Vec<Hand> = Vec::new();
 
-    let hand = Hand::new((h1, h2));
-    let vh = Hand::new((Card::new(Value::Three, Suits::Clubs), Card::new(Value::Three, Suits::Hearts)));
+        println!("Your starting hand: ");
+        let mut x = String::new();
+        io::stdin().read_line(&mut x).expect("Failed to get console input");
+        hs.push(Hand::from_string(x));
 
-    let vec_hand = Vec::from([hand, vh]);
-    let game = Game::new(0, vec_hand);
+        println!("Opponent hands: ");
+        for _ in 0..(nplayers-1) {
+            let mut x = String::new();
+            io::stdin().read_line(&mut x).expect("Failed to get console input");
+            hs.push(Hand::from_string(x));
+        }
+            
+        println!("HS is {:?}", hs);
 
-    println!("START: {:?}", SystemTime::now());
-    let memo = Arc::new(Mutex::new(HashMap::new()));
-    let mut brancher = Brancher::new(game, board, memo);
-    println!("Equity is {:?}", brancher.compute_equity());
-    println!("END: {:?}", SystemTime::now());
+        println!("Board: ");
+        let mut bd: String = String::new();
+        io::stdin().read_line(&mut bd).expect("Failed to get console input");
+        let bd: Vec<char> = bd.chars().collect();
+
+        let mut board: u64 = 0;
+        for i in 0..bd.len()/2 {
+            let c: String = bd.iter().skip(2*i).take(2).collect();
+            let card: Card = Card::from_string(c);
+            println!("Registered {:?}", card);
+            board |= 1 << card.idx;
+        }
+        
+        println!("{:?} {:?}", board, board.count_ones());
+        //let board: u64 = 1 << 3 | 1 << 4 | 1 << 5; //| 1 << 6; // | 1 << 7;
+
+        let game = Game::new(0, hs);
+
+        println!("START: {:?}", SystemTime::now());
+        let memo = Arc::new(Mutex::new(HashMap::new()));
+        let mut brancher = Brancher::new(game, board, memo);
+        println!("Equity is {:?}", brancher.compute_equity());
+        println!("END: {:?}", SystemTime::now());
+    }
 }
