@@ -185,54 +185,53 @@ impl Hand {
             return self.memo[&cards_key];
         }
 
-        let diff: u64 = *board ^ self.prev_board;
+        let mut diff: u64 = *board ^ self.prev_board;
 
-        /*
-        Backwards Conversion:
-             suit = idx % 4;
-             value = (idx - (idx%4))/4 + 2
-        */
-        // Get state of board from binary repr.
-        for i in 0..52 {
-            if (diff >> i) & 1 == 1 {
-                let value: u8 = (i - (i%4))/4 + 2;
-                let suit: Suits = match i % 4 {
-                    0 => Suits::Clubs,
-                    1 => Suits::Hearts,
-                    2 => Suits::Diamonds,
-                    3 => Suits::Spades,
-                    _ => unreachable!(),
-                }; 
+        while diff != 0 {
+            /*
+            Backwards Conversion:
+                 suit = idx % 4;
+                 value = (idx - (idx%4))/4 + 2
+            */
+            let i = diff.trailing_zeros() as u8;
+            let value: u8 = (i - (i%4))/4 + 2;
+            let suit: Suits = match i % 4 {
+                0 => Suits::Clubs,
+                1 => Suits::Hearts,
+                2 => Suits::Diamonds,
+                3 => Suits::Spades,
+                _ => unreachable!(),
+            }; 
 
-                // it got removed
-                if self.prev_board & (1 << i) > 0 {
-                    if let Some(v) = self._values.get_mut(&value) {
-                        *v -= 1; //  remove from self._values
-                        if *v == 0 {
-                            if let Some(j) = self.values.iter().position(|x| x.0 == value) {
-                                self.values.remove(j); // remove from self.values
-                            }
+            // it got removed
+            if self.prev_board & (1 << i) > 0 {
+                if let Some(v) = self._values.get_mut(&value) {
+                    *v -= 1; //  remove from self._values
+                    if *v == 0 {
+                        if let Some(j) = self.values.iter().position(|x| x.0 == value) {
+                            self.values.remove(j); // remove from self.values
                         }
                     }
-
-                    if let Some(l) = self.suits.get_mut(&suit) {
-                        if let Some(j) = l.iter().position(|x| *x == value) {
-                            (*l).remove(j); // remove from suits
-                        }
-                    }
-                } else { // it got added
-                    self.suits.entry(suit)
-                        .or_insert(Vec::new())
-                        .push(value);
-                    *self._values.entry(value).or_insert(0) += 1;
-
-                    // hacky way, but it works for now.
-                    self.values = self._values.iter()
-                            .filter(|&(_, y)| *y != 0)
-                            .map(|(k, v)| (*k, *v))
-                            .collect();
                 }
+
+                if let Some(l) = self.suits.get_mut(&suit) {
+                    if let Some(j) = l.iter().position(|x| *x == value) {
+                        (*l).remove(j); // remove from suits
+                    }
+                }
+            } else { // it got added
+                self.suits.entry(suit)
+                    .or_insert(Vec::new())
+                    .push(value);
+                *self._values.entry(value).or_insert(0) += 1;
+
+                // TODO: fix this. Hacky way, but it works for now.
+                self.values = self._values.iter()
+                        .filter(|&(_, y)| *y != 0)
+                        .map(|(k, v)| (*k, *v))
+                        .collect();
             }
+            diff -= 1 << i; // flip trailing bit i from 1->0
         }
 
         self.values.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
