@@ -1,7 +1,4 @@
-use rand::seq::SliceRandom;
-use rand::thread_rng;
 use strum_macros::EnumIter;
-use strum::IntoEnumIterator;
 use std::collections::HashMap;
 use std::thread;
 use std::time::SystemTime;
@@ -33,15 +30,6 @@ enum Suits {
 }
 
 impl Suits {
-    fn to_char(&self) -> char {
-        match self {
-            Suits::Clubs => 'c',
-            Suits::Hearts => 'h',
-            Suits::Spades => 's',
-            Suits::Diamonds => 'd',
-        }
-    }    
-    
     fn from_char(c: char) -> Self {
         match c {
             'c' => Suits::Clubs,
@@ -138,45 +126,6 @@ impl Card {
         };
         let suit: Suits = Suits::from_char(s[1] as char);
         Self::new(Value::from(value), suit) 
-    }
-}
-
-
-#[derive(Debug)]
-struct Deck {
-    cards: Vec<Card>,
-}
-
-impl Deck {
-    fn new() -> Self {
-        let mut deck = Deck {
-            cards: Vec::new(),
-        };
-        
-        for value in Value::iter() {
-            for suit in Suits::iter() {
-                deck.cards.push(Card::new(value, suit));
-            }
-        }
-        deck.shuffle();
-        deck
-    }
-
-    fn shuffle(&mut self) {
-        let mut rng = thread_rng();
-        self.cards.shuffle(&mut rng);
-    }
-    
-    fn len(&self) -> usize {
-        self.cards.len()
-    }
-
-    fn draw(&mut self) -> Option<Card> {
-        self.cards.pop()
-    }
-    
-    fn append(&mut self, card: Card) {
-        self.cards.push(card);
     }
 }
 
