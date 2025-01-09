@@ -307,7 +307,7 @@ impl Hand {
                 if *vals.last().unwrap() == 14 {
                     vals.insert(0, 1);
                 }
-                for i in (0..(vals.len()-4)).rev() {
+                for i in (0..(vals.len()-5)).rev() {
                     if vals[i+4] - vals[i] == 4 {
                         self.kicker = values[i+4] as u32;
                         return true;
