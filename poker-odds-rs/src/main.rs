@@ -394,9 +394,8 @@ impl Hand {
     }
 
     fn from_string(s: String) -> Self {
-        let h1: String = s.chars().take(2).collect();
-        let h2: String = s.chars().skip(2).take(2).collect();
-        Hand::new((Card::from_string(h1), Card::from_string(h2)))
+        let (h1, h2) = s.split_at(2);
+        Hand::new((Card::from_string(h1.to_string()), Card::from_string(h2.to_string())))
     }
 }
 
@@ -624,18 +623,19 @@ fn main() {
         println!("Board: ");
         let mut bd: String = String::new();
         io::stdin().read_line(&mut bd).expect("Failed to get console input");
-        // TODO: janky way of parsing input, can fix it up
-        let bd: Vec<char> = bd.chars().collect();
 
+        let bd: Vec<char> = bd.chars().collect();
         let mut board: u64 = 0;
-        for i in 0..bd.len()/2 {
-            let c: String = bd.iter().skip(2*i).take(2).collect();
+
+        for chunk in bd.chunks(2) {
+            let c: String = chunk.iter().collect();
+            if c == "\n" {
+                continue;
+            }
             let card: Card = Card::from_string(c);
             board |= 1 << card.idx;
         }
         
-        println!("{:?} {:?}", board, board.count_ones());
-
         let game = Game::new(0, hs);
 
         println!("START: {:?}", SystemTime::now());
