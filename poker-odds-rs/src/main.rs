@@ -143,8 +143,8 @@ struct Hand {
 
 impl Hand {
     fn new(hole: (Card, Card)) -> Self {
-        let mut _values = HashMap::new();
-        let mut suits = HashMap::new();
+        let mut _values = HashMap::with_capacity(13);
+        let mut suits = HashMap::with_capacity(4);
 
         suits.entry(hole.0.suit)
             .or_insert(Vec::new())
