@@ -601,6 +601,7 @@ fn main() {
         1 thread (Rust): 60 seconds 
         8 threads - Without sharing memo: 60 seconds
         8 threads - With sharing memo: 16 seconds.
+        8 threads with opt-level 3 + sharing memo: 4 seconds.
     */
 
     loop {
