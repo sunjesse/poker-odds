@@ -466,19 +466,16 @@ struct Brancher {
     drawn: BitSet,
     board: u64,
     memo: Arc<Mutex<HashMap<u64, f32>>>,
-    hand_b: u64,
 }
 
 impl Brancher {
     fn new(game: Game, board: u64, memo: Arc<Mutex<HashMap<u64, f32>>>) -> Self {
         let hero = game.hands[game.hero_pos].clone();
-        let mut hand_b: u64 = 0;
         let mut drawn = BitSet::new();
 
         for hand in game.hands.iter() {
             drawn.add(hand.hole.0.idx);
             drawn.add(hand.hole.1.idx);
-            hand_b |= 1 << hand.hole.0.idx | 1 << hand.hole.1.idx;
         }
 
         drawn.s |= board;
@@ -489,12 +486,11 @@ impl Brancher {
             drawn,
             board,
             memo,
-            hand_b,
         }
     }
 
     fn branch(&mut self, board: &mut u64) -> f32 {
-        if let Some(val) = self.memo.lock().unwrap().get(&(*board | self.hand_b)) {
+        if let Some(val) = self.memo.lock().unwrap().get(&self.drawn.s) {
             return *val;
         }
     
@@ -510,7 +506,7 @@ impl Brancher {
                     hero_rank > v || (hero_rank == v && hero_kicker > hand.kicker)
                 });
             let val = if beats_all { 1. } else { 0. };
-            self.memo.lock().unwrap().insert(*board | self.hand_b, val);
+            self.memo.lock().unwrap().insert(self.drawn.s, val);
             return val;    
         }
 
@@ -523,7 +519,7 @@ impl Brancher {
             }
         }
         pb /= (52 - self.drawn.len()) as f32;
-        self.memo.lock().unwrap().insert(*board | self.hand_b, pb);
+        self.memo.lock().unwrap().insert(self.drawn.s, pb);
         pb
     }
 
@@ -543,7 +539,6 @@ impl Brancher {
                 thread::spawn(move || {
                     let mut pb: f32 = 0.;
                     let mut board: u64 = local_brancher.board;
-                    println!("Spawning on thread {:?}...", thread::current().id());
                     for i in s..e {
                         if !local_brancher.drawn.contains(i) {
                             local_brancher.add_to_end_of_board(i, &mut board);
@@ -581,12 +576,20 @@ impl Brancher {
         already on the board to avoid overhead
         of copying and moving onto threads.
         */
+        if let Some(val) = self.memo.lock().unwrap().get(&self.drawn.s) {
+            return *val;
+        }
+
         let nthreads: usize = 8;
+            
         if self.board.count_ones() >= 4 {
             let mut board: u64 = self.board.clone();
             self.branch(&mut board)
         } else {
-            self.branch_parallel(nthreads)
+            let p: f32 = self.branch_parallel(nthreads);
+            println!("Equity is {:}.", p);
+            self.memo.lock().unwrap().insert(self.drawn.s, p);
+            p
         }
     }
 
@@ -653,7 +656,7 @@ fn main() {
 
         println!("START: {:?}", SystemTime::now());
         let mut brancher = Brancher::new(game, board, memo.clone());
-        println!("Equity is {:?}", brancher.compute_equity());
+        brancher.compute_equity();
         println!("END: {:?}", SystemTime::now());
     }
 }
