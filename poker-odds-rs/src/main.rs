@@ -605,10 +605,13 @@ fn main() {
     */
 
     loop {
-        println!("# active players:");
+        println!("# active players [0 to exit]:");
         let mut nplayers = String::new();
         io::stdin().read_line(&mut nplayers).expect("Failed to get console input");
         let nplayers = nplayers.trim().parse::<i32>().expect("Failed to parse int");
+        if nplayers == 0 {
+            break;
+        }
 
         let mut hs: Vec<Hand> = Vec::new();
 
