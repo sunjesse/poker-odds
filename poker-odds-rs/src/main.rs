@@ -466,17 +466,19 @@ struct Brancher {
     drawn: BitSet,
     board: u64,
     memo: Arc<Mutex<HashMap<u64, f32>>>,
+    hand_b: u64,
 }
 
 impl Brancher {
     fn new(game: Game, board: u64, memo: Arc<Mutex<HashMap<u64, f32>>>) -> Self {
         let hero = game.hands[game.hero_pos].clone();
-
+        let mut hand_b: u64 = 0;
         let mut drawn = BitSet::new();
 
         for hand in game.hands.iter() {
             drawn.add(hand.hole.0.idx);
             drawn.add(hand.hole.1.idx);
+            hand_b |= 1 << hand.hole.0.idx | 1 << hand.hole.1.idx;
         }
 
         drawn.s |= board;
@@ -487,11 +489,12 @@ impl Brancher {
             drawn,
             board,
             memo,
+            hand_b,
         }
     }
 
     fn branch(&mut self, board: &mut u64) -> f32 {
-        if let Some(val) = self.memo.lock().unwrap().get(board) {
+        if let Some(val) = self.memo.lock().unwrap().get(&(*board | self.hand_b)) {
             return *val;
         }
     
@@ -507,7 +510,7 @@ impl Brancher {
                     hero_rank > v || (hero_rank == v && hero_kicker > hand.kicker)
                 });
             let val = if beats_all { 1. } else { 0. };
-            self.memo.lock().unwrap().insert(*board, val);
+            self.memo.lock().unwrap().insert(*board | self.hand_b, val);
             return val;    
         }
 
@@ -520,7 +523,7 @@ impl Brancher {
             }
         }
         pb /= (52 - self.drawn.len()) as f32;
-        self.memo.lock().unwrap().insert(*board, pb);
+        self.memo.lock().unwrap().insert(*board | self.hand_b, pb);
         pb
     }
 
@@ -603,6 +606,7 @@ fn main() {
         8 threads - With sharing memo: 16 seconds.
         8 threads with opt-level 3 + sharing memo: 4 seconds.
     */
+    let memo = Arc::new(Mutex::new(HashMap::new()));
 
     loop {
         println!("# active players [0 to exit]:");
@@ -648,8 +652,7 @@ fn main() {
         let game = Game::new(0, hs);
 
         println!("START: {:?}", SystemTime::now());
-        let memo = Arc::new(Mutex::new(HashMap::new()));
-        let mut brancher = Brancher::new(game, board, memo);
+        let mut brancher = Brancher::new(game, board, memo.clone());
         println!("Equity is {:?}", brancher.compute_equity());
         println!("END: {:?}", SystemTime::now());
     }
