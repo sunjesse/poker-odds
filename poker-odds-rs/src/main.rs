@@ -245,6 +245,11 @@ impl Hand {
         // avoid the need for creating HashMaps, vecs,
         // and other objects.
 
+        // Furthermore, the lower down the if-else statement,
+        // the more likely the hand is. We are doing quite
+        // a bit of branching here. TODO: Reduce amount of branching
+        // needed?
+
         if self.is_royal_flush() {
             _rank = Rank::RoyalFlush;
         } else if self.is_straight_flush() {
