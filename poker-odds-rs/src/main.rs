@@ -192,6 +192,10 @@ impl Hand {
             Backwards Conversion:
                  suit = idx % 4;
                  value = (idx - (idx%4))/4 + 2
+
+            We use a trailing zeros truncations trick
+            to avoid the amount of branch mispredictions
+            as the number of 1 bits is low.
             */
             let i = diff.trailing_zeros() as u8;
             let value: u8 = (i - (i%4))/4 + 2;
