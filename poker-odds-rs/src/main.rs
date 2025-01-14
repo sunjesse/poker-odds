@@ -576,7 +576,7 @@ impl Brancher {
 
     fn compute_equity(&mut self) -> f32 {
         /*
-        Run on only one thread 4 cards are
+        Run on one thread if 4 cards are
         already on the board to avoid overhead
         of copying and moving onto threads.
         */
