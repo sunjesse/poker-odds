@@ -254,7 +254,7 @@ impl Hand {
         // a bit of branching here. TODO: Reduce amount of branching
         // needed?
 
-        if self.is_royal_flush() {
+        if self.is_royal_flush(&cards_key) {
             _rank = Rank::RoyalFlush;
         } else if self.is_straight_flush() {
             _rank = Rank::StraightFlush;
@@ -280,12 +280,15 @@ impl Hand {
         _rank
     }
 
-    fn is_royal_flush(&self) -> bool {
-        for (_suit, values) in self.suits.iter() {
-            if values.len() >= 5 && [10, 11, 12, 13, 14].iter().all(|&item| values.contains(&item)) {
+    fn is_royal_flush(&self, cards: &u64) -> bool {
+        # repr := cards in a royal flush of suit clubs. shift left for next suit.
+        let mut repr: u64 = 1 << 32 | 1 << 36 | 1 << 40 | 1 << 44 | 1 << 48;
+        for _ in 0..4 {
+            if (repr & *cards) == repr {
                 return true;
             }
-        }
+            repr <<= 1;
+        }  
         false
     }
 
@@ -460,6 +463,11 @@ impl BitSet {
     fn len(&self) -> usize {
         self.length
     }
+
+    fn add_board(&mut self, board: &u64) {
+        self.length += ((*board).count_ones() - (*board & self.s).count_ones()) as usize;
+        self.s |= *board;
+    }
 }
 
 
@@ -482,7 +490,7 @@ impl Brancher {
             drawn.add(hand.hole.1.idx);
         }
 
-        drawn.s |= board;
+        drawn.add_board(&board);
 
         Brancher {
             game,
@@ -522,6 +530,7 @@ impl Brancher {
                 self.remove_from_end_of_board(i, board);
             }
         }
+
         pb /= (52 - self.drawn.len()) as f32;
         self.memo.lock().unwrap().insert(self.drawn.s, pb);
         pb
@@ -585,16 +594,17 @@ impl Brancher {
         }
 
         let nthreads: usize = 8;
+        let p: f32;
             
         if self.board.count_ones() >= 4 {
             let mut board: u64 = self.board.clone();
-            self.branch(&mut board)
+            p = self.branch(&mut board);
         } else {
-            let p: f32 = self.branch_parallel(nthreads);
-            println!("Equity is {:}.", p);
+            p = self.branch_parallel(nthreads);
             self.memo.lock().unwrap().insert(self.drawn.s, p);
-            p
         }
+        println!("Equity is {:}.", p);
+        p
     }
 
 }
