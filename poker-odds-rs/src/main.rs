@@ -283,13 +283,11 @@ impl Hand {
     fn is_royal_flush(&self, cards: &u64) -> bool {
         // repr := cards in a royal flush of suit clubs. shift left for next suit.
         let mut repr: u64 = 1 << 32 | 1 << 36 | 1 << 40 | 1 << 44 | 1 << 48;
-        for _ in 0..4 {
-            if (repr & *cards) == repr {
-                return true;
-            }
-            repr <<= 1;
-        }  
-        false
+        (0..4)
+            .fold(false, |acc, x| { 
+                repr <<= x;
+                acc | ((repr & *cards) == repr)
+            })
     }
 
     fn is_straight_flush(&mut self) -> bool {
