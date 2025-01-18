@@ -1,0 +1,491 @@
+<?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg version="1.1" width="1200" height="358" onload="init(evt)" viewBox="0 0 1200 358" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:fg="http://github.com/jonhoo/inferno"><!--Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples.--><!--NOTES: --><defs><linearGradient id="background" y1="0" y2="1" x1="0" x2="0"><stop stop-color="#eeeeee" offset="5%"/><stop stop-color="#eeeeb0" offset="95%"/></linearGradient></defs><style type="text/css">
+text { font-family:monospace; font-size:12px }
+#title { text-anchor:middle; font-size:17px; }
+#matched { text-anchor:end; }
+#search { text-anchor:end; opacity:0.1; cursor:pointer; }
+#search:hover, #search.show { opacity:1; }
+#subtitle { text-anchor:middle; font-color:rgb(160,160,160); }
+#unzoom { cursor:pointer; }
+#frames > *:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+.hide { display:none; }
+.parent { opacity:0.5; }
+</style><script type="text/ecmascript"><![CDATA[
+        var nametype = 'Function:';
+        var fontsize = 12;
+        var fontwidth = 0.59;
+        var xpad = 10;
+        var inverted = false;
+        var searchcolor = 'rgb(230,0,230)';
+        var fluiddrawing = true;
+        var truncate_text_right = false;
+    ]]><![CDATA["use strict";
+var details, searchbtn, unzoombtn, matchedtxt, svg, searching, frames, known_font_width;
+function init(evt) {
+    details = document.getElementById("details").firstChild;
+    searchbtn = document.getElementById("search");
+    unzoombtn = document.getElementById("unzoom");
+    matchedtxt = document.getElementById("matched");
+    svg = document.getElementsByTagName("svg")[0];
+    frames = document.getElementById("frames");
+    known_font_width = get_monospace_width(frames);
+    total_samples = parseInt(frames.attributes.total_samples.value);
+    searching = 0;
+
+    // Use GET parameters to restore a flamegraph's state.
+    var restore_state = function() {
+        var params = get_params();
+        if (params.x && params.y)
+            zoom(find_group(document.querySelector('[*|x="' + params.x + '"][y="' + params.y + '"]')));
+        if (params.s)
+            search(params.s);
+    };
+
+    if (fluiddrawing) {
+        // Make width dynamic so the SVG fits its parent's width.
+        svg.removeAttribute("width");
+        // Edge requires us to have a viewBox that gets updated with size changes.
+        var isEdge = /Edge\/\d./i.test(navigator.userAgent);
+        if (!isEdge) {
+            svg.removeAttribute("viewBox");
+        }
+        var update_for_width_change = function() {
+            if (isEdge) {
+                svg.attributes.viewBox.value = "0 0 " + svg.width.baseVal.value + " " + svg.height.baseVal.value;
+            }
+
+            // Keep consistent padding on left and right of frames container.
+            frames.attributes.width.value = svg.width.baseVal.value - xpad * 2;
+
+            // Text truncation needs to be adjusted for the current width.
+            update_text_for_elements(frames.children);
+
+            // Keep search elements at a fixed distance from right edge.
+            var svgWidth = svg.width.baseVal.value;
+            searchbtn.attributes.x.value = svgWidth - xpad;
+            matchedtxt.attributes.x.value = svgWidth - xpad;
+        };
+        window.addEventListener('resize', function() {
+            update_for_width_change();
+        });
+        // This needs to be done asynchronously for Safari to work.
+        setTimeout(function() {
+            unzoom();
+            update_for_width_change();
+            restore_state();
+        }, 0);
+    } else {
+        restore_state();
+    }
+}
+// event listeners
+window.addEventListener("click", function(e) {
+    var target = find_group(e.target);
+    if (target) {
+        if (target.nodeName == "a") {
+            if (e.ctrlKey === false) return;
+            e.preventDefault();
+        }
+        if (target.classList.contains("parent")) unzoom();
+        zoom(target);
+
+        // set parameters for zoom state
+        var el = target.querySelector("rect");
+        if (el && el.attributes && el.attributes.y && el.attributes["fg:x"]) {
+            var params = get_params()
+            params.x = el.attributes["fg:x"].value;
+            params.y = el.attributes.y.value;
+            history.replaceState(null, null, parse_params(params));
+        }
+    }
+    else if (e.target.id == "unzoom") {
+        unzoom();
+
+        // remove zoom state
+        var params = get_params();
+        if (params.x) delete params.x;
+        if (params.y) delete params.y;
+        history.replaceState(null, null, parse_params(params));
+    }
+    else if (e.target.id == "search") search_prompt();
+}, false)
+// mouse-over for info
+// show
+window.addEventListener("mouseover", function(e) {
+    var target = find_group(e.target);
+    if (target) details.nodeValue = nametype + " " + g_to_text(target);
+}, false)
+// clear
+window.addEventListener("mouseout", function(e) {
+    var target = find_group(e.target);
+    if (target) details.nodeValue = ' ';
+}, false)
+// ctrl-F for search
+window.addEventListener("keydown",function (e) {
+    if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+        e.preventDefault();
+        search_prompt();
+    }
+}, false)
+// functions
+function get_params() {
+    var params = {};
+    var paramsarr = window.location.search.substr(1).split('&');
+    for (var i = 0; i < paramsarr.length; ++i) {
+        var tmp = paramsarr[i].split("=");
+        if (!tmp[0] || !tmp[1]) continue;
+        params[tmp[0]]  = decodeURIComponent(tmp[1]);
+    }
+    return params;
+}
+function parse_params(params) {
+    var uri = "?";
+    for (var key in params) {
+        uri += key + '=' + encodeURIComponent(params[key]) + '&';
+    }
+    if (uri.slice(-1) == "&")
+        uri = uri.substring(0, uri.length - 1);
+    if (uri == '?')
+        uri = window.location.href.split('?')[0];
+    return uri;
+}
+function find_child(node, selector) {
+    var children = node.querySelectorAll(selector);
+    if (children.length) return children[0];
+    return;
+}
+function find_group(node) {
+    var parent = node.parentElement;
+    if (!parent) return;
+    if (parent.id == "frames") return node;
+    return find_group(parent);
+}
+function orig_save(e, attr, val) {
+    if (e.attributes["fg:orig_" + attr] != undefined) return;
+    if (e.attributes[attr] == undefined) return;
+    if (val == undefined) val = e.attributes[attr].value;
+    e.setAttribute("fg:orig_" + attr, val);
+}
+function orig_load(e, attr) {
+    if (e.attributes["fg:orig_"+attr] == undefined) return;
+    e.attributes[attr].value = e.attributes["fg:orig_" + attr].value;
+    e.removeAttribute("fg:orig_" + attr);
+}
+function g_to_text(e) {
+    var text = find_child(e, "title").firstChild.nodeValue;
+    return (text)
+}
+function g_to_func(e) {
+    var func = g_to_text(e);
+    // if there's any manipulation we want to do to the function
+    // name before it's searched, do it here before returning.
+    return (func);
+}
+function get_monospace_width(frames) {
+    // Given the id="frames" element, return the width of text characters if
+    // this is a monospace font, otherwise return 0.
+    text = find_child(frames.children[0], "text");
+    originalContent = text.textContent;
+    text.textContent = "!";
+    bangWidth = text.getComputedTextLength();
+    text.textContent = "W";
+    wWidth = text.getComputedTextLength();
+    text.textContent = originalContent;
+    if (bangWidth === wWidth) {
+        return bangWidth;
+    } else {
+        return 0;
+    }
+}
+function update_text_for_elements(elements) {
+    // In order to render quickly in the browser, you want to do one pass of
+    // reading attributes, and one pass of mutating attributes. See
+    // https://web.dev/avoid-large-complex-layouts-and-layout-thrashing/ for details.
+
+    // Fall back to inefficient calculation, if we're variable-width font.
+    // TODO This should be optimized somehow too.
+    if (known_font_width === 0) {
+        for (var i = 0; i < elements.length; i++) {
+            update_text(elements[i]);
+        }
+        return;
+    }
+
+    var textElemNewAttributes = [];
+    for (var i = 0; i < elements.length; i++) {
+        var e = elements[i];
+        var r = find_child(e, "rect");
+        var t = find_child(e, "text");
+        var w = parseFloat(r.attributes.width.value) * frames.attributes.width.value / 100 - 3;
+        var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+        var newX = format_percent((parseFloat(r.attributes.x.value) + (100 * 3 / frames.attributes.width.value)));
+
+        // Smaller than this size won't fit anything
+        if (w < 2 * known_font_width) {
+            textElemNewAttributes.push([newX, ""]);
+            continue;
+        }
+
+        // Fit in full text width
+        if (txt.length * known_font_width < w) {
+            textElemNewAttributes.push([newX, txt]);
+            continue;
+        }
+
+        var substringLength = Math.floor(w / known_font_width) - 2;
+        if (truncate_text_right) {
+            // Truncate the right side of the text.
+            textElemNewAttributes.push([newX, txt.substring(0, substringLength) + ".."]);
+            continue;
+        } else {
+            // Truncate the left side of the text.
+            textElemNewAttributes.push([newX, ".." + txt.substring(txt.length - substringLength, txt.length)]);
+            continue;
+        }
+    }
+
+    console.assert(textElemNewAttributes.length === elements.length, "Resize failed, please file a bug at https://github.com/jonhoo/inferno/");
+
+    // Now that we know new textContent, set it all in one go so we don't refresh a bazillion times.
+    for (var i = 0; i < elements.length; i++) {
+        var e = elements[i];
+        var values = textElemNewAttributes[i];
+        var t = find_child(e, "text");
+        t.attributes.x.value = values[0];
+        t.textContent = values[1];
+    }
+}
+
+function update_text(e) {
+    var r = find_child(e, "rect");
+    var t = find_child(e, "text");
+    var w = parseFloat(r.attributes.width.value) * frames.attributes.width.value / 100 - 3;
+    var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+    t.attributes.x.value = format_percent((parseFloat(r.attributes.x.value) + (100 * 3 / frames.attributes.width.value)));
+
+    // Smaller than this size won't fit anything
+    if (w < 2 * fontsize * fontwidth) {
+        t.textContent = "";
+        return;
+    }
+    t.textContent = txt;
+    // Fit in full text width
+    if (t.getComputedTextLength() < w)
+        return;
+    if (truncate_text_right) {
+        // Truncate the right side of the text.
+        for (var x = txt.length - 2; x > 0; x--) {
+            if (t.getSubStringLength(0, x + 2) <= w) {
+                t.textContent = txt.substring(0, x) + "..";
+                return;
+            }
+        }
+    } else {
+        // Truncate the left side of the text.
+        for (var x = 2; x < txt.length; x++) {
+            if (t.getSubStringLength(x - 2, txt.length) <= w) {
+                t.textContent = ".." + txt.substring(x, txt.length);
+                return;
+            }
+        }
+    }
+    t.textContent = "";
+}
+// zoom
+function zoom_reset(e) {
+    if (e.tagName == "rect") {
+        e.attributes.x.value = format_percent(100 * parseInt(e.attributes["fg:x"].value) / total_samples);
+        e.attributes.width.value = format_percent(100 * parseInt(e.attributes["fg:w"].value) / total_samples);
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_reset(c[i]);
+    }
+}
+function zoom_child(e, x, zoomed_width_samples) {
+    if (e.tagName == "text") {
+        var parent_x = parseFloat(find_child(e.parentNode, "rect[x]").attributes.x.value);
+        e.attributes.x.value = format_percent(parent_x + (100 * 3 / frames.attributes.width.value));
+    } else if (e.tagName == "rect") {
+        e.attributes.x.value = format_percent(100 * (parseInt(e.attributes["fg:x"].value) - x) / zoomed_width_samples);
+        e.attributes.width.value = format_percent(100 * parseInt(e.attributes["fg:w"].value) / zoomed_width_samples);
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_child(c[i], x, zoomed_width_samples);
+    }
+}
+function zoom_parent(e) {
+    if (e.attributes) {
+        if (e.attributes.x != undefined) {
+            e.attributes.x.value = "0.0%";
+        }
+        if (e.attributes.width != undefined) {
+            e.attributes.width.value = "100.0%";
+        }
+    }
+    if (e.childNodes == undefined) return;
+    for(var i = 0, c = e.childNodes; i < c.length; i++) {
+        zoom_parent(c[i]);
+    }
+}
+function zoom(node) {
+    var attr = find_child(node, "rect").attributes;
+    var width = parseInt(attr["fg:w"].value);
+    var xmin = parseInt(attr["fg:x"].value);
+    var xmax = xmin + width;
+    var ymin = parseFloat(attr.y.value);
+    unzoombtn.classList.remove("hide");
+    var el = frames.children;
+    var to_update_text = [];
+    for (var i = 0; i < el.length; i++) {
+        var e = el[i];
+        var a = find_child(e, "rect").attributes;
+        var ex = parseInt(a["fg:x"].value);
+        var ew = parseInt(a["fg:w"].value);
+        // Is it an ancestor
+        if (!inverted) {
+            var upstack = parseFloat(a.y.value) > ymin;
+        } else {
+            var upstack = parseFloat(a.y.value) < ymin;
+        }
+        if (upstack) {
+            // Direct ancestor
+            if (ex <= xmin && (ex+ew) >= xmax) {
+                e.classList.add("parent");
+                zoom_parent(e);
+                to_update_text.push(e);
+            }
+            // not in current path
+            else
+                e.classList.add("hide");
+        }
+        // Children maybe
+        else {
+            // no common path
+            if (ex < xmin || ex >= xmax) {
+                e.classList.add("hide");
+            }
+            else {
+                zoom_child(e, xmin, width);
+                to_update_text.push(e);
+            }
+        }
+    }
+    update_text_for_elements(to_update_text);
+}
+function unzoom() {
+    unzoombtn.classList.add("hide");
+    var el = frames.children;
+    for(var i = 0; i < el.length; i++) {
+        el[i].classList.remove("parent");
+        el[i].classList.remove("hide");
+        zoom_reset(el[i]);
+    }
+    update_text_for_elements(el);
+}
+// search
+function reset_search() {
+    var el = document.querySelectorAll("#frames rect");
+    for (var i = 0; i < el.length; i++) {
+        orig_load(el[i], "fill")
+    }
+    var params = get_params();
+    delete params.s;
+    history.replaceState(null, null, parse_params(params));
+}
+function search_prompt() {
+    if (!searching) {
+        var term = prompt("Enter a search term (regexp " +
+            "allowed, eg: ^ext4_)", "");
+        if (term != null) {
+            search(term)
+        }
+    } else {
+        reset_search();
+        searching = 0;
+        searchbtn.classList.remove("show");
+        searchbtn.firstChild.nodeValue = "Search"
+        matchedtxt.classList.add("hide");
+        matchedtxt.firstChild.nodeValue = ""
+    }
+}
+function search(term) {
+    var re = new RegExp(term);
+    var el = frames.children;
+    var matches = new Object();
+    var maxwidth = 0;
+    for (var i = 0; i < el.length; i++) {
+        var e = el[i];
+        // Skip over frames which are either not visible, or below the zoomed-to frame
+        if (e.classList.contains("hide") || e.classList.contains("parent")) {
+            continue;
+        }
+        var func = g_to_func(e);
+        var rect = find_child(e, "rect");
+        if (func == null || rect == null)
+            continue;
+        // Save max width. Only works as we have a root frame
+        var w = parseInt(rect.attributes["fg:w"].value);
+        if (w > maxwidth)
+            maxwidth = w;
+        if (func.match(re)) {
+            // highlight
+            var x = parseInt(rect.attributes["fg:x"].value);
+            orig_save(rect, "fill");
+            rect.attributes.fill.value = searchcolor;
+            // remember matches
+            if (matches[x] == undefined) {
+                matches[x] = w;
+            } else {
+                if (w > matches[x]) {
+                    // overwrite with parent
+                    matches[x] = w;
+                }
+            }
+            searching = 1;
+        }
+    }
+    if (!searching)
+        return;
+    var params = get_params();
+    params.s = term;
+    history.replaceState(null, null, parse_params(params));
+
+    searchbtn.classList.add("show");
+    searchbtn.firstChild.nodeValue = "Reset Search";
+    // calculate percent matched, excluding vertical overlap
+    var count = 0;
+    var lastx = -1;
+    var lastw = 0;
+    var keys = Array();
+    for (k in matches) {
+        if (matches.hasOwnProperty(k))
+            keys.push(k);
+    }
+    // sort the matched frames by their x location
+    // ascending, then width descending
+    keys.sort(function(a, b){
+        return a - b;
+    });
+    // Step through frames saving only the biggest bottom-up frames
+    // thanks to the sort order. This relies on the tree property
+    // where children are always smaller than their parents.
+    for (var k in keys) {
+        var x = parseInt(keys[k]);
+        var w = matches[keys[k]];
+        if (x >= lastx + lastw) {
+            count += w;
+            lastx = x;
+            lastw = w;
+        }
+    }
+    // display matched percent
+    matchedtxt.classList.remove("hide");
+    var pct = 100 * count / maxwidth;
+    if (pct != 100) pct = pct.toFixed(1);
+    matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+}
+function format_percent(n) {
+    return n.toFixed(4) + "%";
+}
+]]></script><rect x="0" y="0" width="100%" height="358" fill="url(#background)"/><text id="title" fill="rgb(0,0,0)" x="50.0000%" y="24.00">Flame Graph</text><text id="details" fill="rgb(0,0,0)" x="10" y="341.00"> </text><text id="unzoom" class="hide" fill="rgb(0,0,0)" x="10" y="24.00">Reset Zoom</text><text id="search" fill="rgb(0,0,0)" x="1190" y="24.00">Search</text><text id="matched" fill="rgb(0,0,0)" x="1190" y="341.00"> </text><svg id="frames" x="10" width="1180" total_samples="27617"><g><title>poker-odds-rs`alloc::sync::Arc&lt;T,A&gt;::drop_slow (13 samples, 0.05%)</title><rect x="0.0000%" y="197" width="0.0471%" height="15" fill="rgb(227,0,7)" fg:x="0" fg:w="13"/><text x="0.2500%" y="207.50"></text></g><g><title>libsystem_malloc.dylib`_szone_free (13 samples, 0.05%)</title><rect x="0.0000%" y="181" width="0.0471%" height="15" fill="rgb(217,0,24)" fg:x="0" fg:w="13"/><text x="0.2500%" y="191.50"></text></g><g><title>libsystem_kernel.dylib`madvise (13 samples, 0.05%)</title><rect x="0.0000%" y="165" width="0.0471%" height="15" fill="rgb(221,193,54)" fg:x="0" fg:w="13"/><text x="0.2500%" y="175.50"></text></g><g><title>dyld`start (14 samples, 0.05%)</title><rect x="0.0000%" y="293" width="0.0507%" height="15" fill="rgb(248,212,6)" fg:x="0" fg:w="14"/><text x="0.2500%" y="303.50"></text></g><g><title>poker-odds-rs`main (14 samples, 0.05%)</title><rect x="0.0000%" y="277" width="0.0507%" height="15" fill="rgb(208,68,35)" fg:x="0" fg:w="14"/><text x="0.2500%" y="287.50"></text></g><g><title>poker-odds-rs`std::rt::lang_start_internal (14 samples, 0.05%)</title><rect x="0.0000%" y="261" width="0.0507%" height="15" fill="rgb(232,128,0)" fg:x="0" fg:w="14"/><text x="0.2500%" y="271.50"></text></g><g><title>poker-odds-rs`std::rt::lang_start::_{{closure}} (14 samples, 0.05%)</title><rect x="0.0000%" y="245" width="0.0507%" height="15" fill="rgb(207,160,47)" fg:x="0" fg:w="14"/><text x="0.2500%" y="255.50"></text></g><g><title>poker-odds-rs`std::sys::backtrace::__rust_begin_short_backtrace (14 samples, 0.05%)</title><rect x="0.0000%" y="229" width="0.0507%" height="15" fill="rgb(228,23,34)" fg:x="0" fg:w="14"/><text x="0.2500%" y="239.50"></text></g><g><title>poker-odds-rs`poker_odds_rs::main (14 samples, 0.05%)</title><rect x="0.0000%" y="213" width="0.0507%" height="15" fill="rgb(218,30,26)" fg:x="0" fg:w="14"/><text x="0.2500%" y="223.50"></text></g><g><title>libsystem_pthread.dylib`_pthread_mutex_firstfit_lock_slow (49 samples, 0.18%)</title><rect x="0.1304%" y="165" width="0.1774%" height="15" fill="rgb(220,122,19)" fg:x="36" fg:w="49"/><text x="0.3804%" y="175.50"></text></g><g><title>libsystem_kernel.dylib`__psynch_mutexwait (49 samples, 0.18%)</title><rect x="0.1304%" y="149" width="0.1774%" height="15" fill="rgb(250,228,42)" fg:x="36" fg:w="49"/><text x="0.3804%" y="159.50"></text></g><g><title>libsystem_pthread.dylib`_pthread_mutex_firstfit_unlock_slow (51 samples, 0.18%)</title><rect x="0.3078%" y="165" width="0.1847%" height="15" fill="rgb(240,193,28)" fg:x="85" fg:w="51"/><text x="0.5578%" y="175.50"></text></g><g><title>libsystem_kernel.dylib`__psynch_mutexdrop (51 samples, 0.18%)</title><rect x="0.3078%" y="149" width="0.1847%" height="15" fill="rgb(216,20,37)" fg:x="85" fg:w="51"/><text x="0.5578%" y="159.50"></text></g><g><title>libsystem_kernel.dylib`__psynch_mutexwait (726 samples, 2.63%)</title><rect x="0.9668%" y="133" width="2.6288%" height="15" fill="rgb(206,188,39)" fg:x="267" fg:w="726"/><text x="1.2168%" y="143.50">li..</text></g><g><title>libsystem_pthread.dylib`_pthread_mutex_firstfit_lock_slow (732 samples, 2.65%)</title><rect x="0.9559%" y="149" width="2.6505%" height="15" fill="rgb(217,207,13)" fg:x="264" fg:w="732"/><text x="1.2059%" y="159.50">li..</text></g><g><title>libsystem_pthread.dylib`_pthread_mutex_firstfit_lock_wait (3 samples, 0.01%)</title><rect x="3.5956%" y="133" width="0.0109%" height="15" fill="rgb(231,73,38)" fg:x="993" fg:w="3"/><text x="3.8456%" y="143.50"></text></g><g><title>libsystem_pthread.dylib`_pthread_mutex_firstfit_unlock_slow (690 samples, 2.50%)</title><rect x="3.6065%" y="149" width="2.4985%" height="15" fill="rgb(225,20,46)" fg:x="996" fg:w="690"/><text x="3.8565%" y="159.50">li..</text></g><g><title>libsystem_kernel.dylib`__psynch_mutexdrop (687 samples, 2.49%)</title><rect x="3.6173%" y="133" width="2.4876%" height="15" fill="rgb(210,31,41)" fg:x="999" fg:w="687"/><text x="3.8673%" y="143.50">li..</text></g><g><title>libsystem_pthread.dylib`pthread_mutex_lock (27 samples, 0.10%)</title><rect x="6.1049%" y="149" width="0.0978%" height="15" fill="rgb(221,200,47)" fg:x="1686" fg:w="27"/><text x="6.3549%" y="159.50"></text></g><g><title>libsystem_pthread.dylib`pthread_mutex_unlock (30 samples, 0.11%)</title><rect x="6.2027%" y="149" width="0.1086%" height="15" fill="rgb(226,26,5)" fg:x="1713" fg:w="30"/><text x="6.4527%" y="159.50"></text></g><g><title>poker-odds-rs`&lt;std::hash::random::DefaultHasher as core::hash::Hasher&gt;::write (3 samples, 0.01%)</title><rect x="6.3113%" y="149" width="0.0109%" height="15" fill="rgb(249,33,26)" fg:x="1743" fg:w="3"/><text x="6.5613%" y="159.50"></text></g><g><title>poker-odds-rs`DYLD-STUB$$pthread_mutex_lock (10 samples, 0.04%)</title><rect x="6.3222%" y="149" width="0.0362%" height="15" fill="rgb(235,183,28)" fg:x="1746" fg:w="10"/><text x="6.5722%" y="159.50"></text></g><g><title>poker-odds-rs`DYLD-STUB$$pthread_mutex_unlock (9 samples, 0.03%)</title><rect x="6.3584%" y="149" width="0.0326%" height="15" fill="rgb(221,5,38)" fg:x="1756" fg:w="9"/><text x="6.6084%" y="159.50"></text></g><g><title>poker-odds-rs`core::hash::BuildHasher::hash_one (14 samples, 0.05%)</title><rect x="6.3910%" y="149" width="0.0507%" height="15" fill="rgb(247,18,42)" fg:x="1765" fg:w="14"/><text x="6.6410%" y="159.50"></text></g><g><title>poker-odds-rs`hashbrown::map::HashMap&lt;K,V,S,A&gt;::insert (14 samples, 0.05%)</title><rect x="6.4417%" y="149" width="0.0507%" height="15" fill="rgb(241,131,45)" fg:x="1779" fg:w="14"/><text x="6.6917%" y="159.50"></text></g><g><title>poker-odds-rs`core::hash::BuildHasher::hash_one (4 samples, 0.01%)</title><rect x="6.4779%" y="133" width="0.0145%" height="15" fill="rgb(249,31,29)" fg:x="1789" fg:w="4"/><text x="6.7279%" y="143.50"></text></g><g><title>libsystem_malloc.dylib`_nanov2_free (3 samples, 0.01%)</title><rect x="9.0886%" y="133" width="0.0109%" height="15" fill="rgb(225,111,53)" fg:x="2510" fg:w="3"/><text x="9.3386%" y="143.50"></text></g><g><title>libsystem_malloc.dylib`free (24 samples, 0.09%)</title><rect x="9.0995%" y="133" width="0.0869%" height="15" fill="rgb(238,160,17)" fg:x="2513" fg:w="24"/><text x="9.3495%" y="143.50"></text></g><g><title>libsystem_malloc.dylib`nanov2_malloc (4 samples, 0.01%)</title><rect x="9.1864%" y="133" width="0.0145%" height="15" fill="rgb(214,148,48)" fg:x="2537" fg:w="4"/><text x="9.4364%" y="143.50"></text></g><g><title>libsystem_platform.dylib`_platform_memmove (22 samples, 0.08%)</title><rect x="9.2009%" y="133" width="0.0797%" height="15" fill="rgb(232,36,49)" fg:x="2541" fg:w="22"/><text x="9.4509%" y="143.50"></text></g><g><title>libsystem_kernel.dylib`__psynch_mutexwait (13,647 samples, 49.42%)</title><rect x="9.6173%" y="117" width="49.4152%" height="15" fill="rgb(209,103,24)" fg:x="2656" fg:w="13647"/><text x="9.8673%" y="127.50">libsystem_kernel.dylib`__psynch_mutexwait</text></g><g><title>libsystem_pthread.dylib`_pthread_mutex_firstfit_lock_slow (13,831 samples, 50.08%)</title><rect x="9.2805%" y="133" width="50.0815%" height="15" fill="rgb(229,88,8)" fg:x="2563" fg:w="13831"/><text x="9.5305%" y="143.50">libsystem_pthread.dylib`_pthread_mutex_firstfit_lock_slow</text></g><g><title>libsystem_pthread.dylib`_pthread_mutex_firstfit_lock_wait (90 samples, 0.33%)</title><rect x="59.0361%" y="117" width="0.3259%" height="15" fill="rgb(213,181,19)" fg:x="16304" fg:w="90"/><text x="59.2861%" y="127.50"></text></g><g><title>libsystem_kernel.dylib`__psynch_mutexdrop (8,000 samples, 28.97%)</title><rect x="59.4598%" y="117" width="28.9677%" height="15" fill="rgb(254,191,54)" fg:x="16421" fg:w="8000"/><text x="59.7098%" y="127.50">libsystem_kernel.dylib`__psynch_mutexdrop</text></g><g><title>libsystem_pthread.dylib`_pthread_mutex_firstfit_unlock_slow (8,031 samples, 29.08%)</title><rect x="59.3620%" y="133" width="29.0799%" height="15" fill="rgb(241,83,37)" fg:x="16394" fg:w="8031"/><text x="59.6120%" y="143.50">libsystem_pthread.dylib`_pthread_mutex_firstfit..</text></g><g><title>libsystem_pthread.dylib`_pthread_mutex_firstfit_wake (3 samples, 0.01%)</title><rect x="88.4310%" y="117" width="0.0109%" height="15" fill="rgb(233,36,39)" fg:x="24422" fg:w="3"/><text x="88.6810%" y="127.50"></text></g><g><title>libsystem_pthread.dylib`pthread_mutex_lock (227 samples, 0.82%)</title><rect x="88.4419%" y="133" width="0.8220%" height="15" fill="rgb(226,3,54)" fg:x="24425" fg:w="227"/><text x="88.6919%" y="143.50"></text></g><g><title>libsystem_pthread.dylib`pthread_mutex_unlock (223 samples, 0.81%)</title><rect x="89.2639%" y="133" width="0.8075%" height="15" fill="rgb(245,192,40)" fg:x="24652" fg:w="223"/><text x="89.5139%" y="143.50"></text></g><g><title>poker-odds-rs`&lt;alloc::vec::Vec&lt;T&gt; as alloc::vec::spec_from_iter::SpecFromIter&lt;T,I&gt;&gt;::from_iter (3 samples, 0.01%)</title><rect x="90.0713%" y="133" width="0.0109%" height="15" fill="rgb(238,167,29)" fg:x="24875" fg:w="3"/><text x="90.3213%" y="143.50"></text></g><g><title>poker-odds-rs`&lt;std::hash::random::DefaultHasher as core::hash::Hasher&gt;::write (51 samples, 0.18%)</title><rect x="90.0822%" y="133" width="0.1847%" height="15" fill="rgb(232,182,51)" fg:x="24878" fg:w="51"/><text x="90.3322%" y="143.50"></text></g><g><title>poker-odds-rs`DYLD-STUB$$free (4 samples, 0.01%)</title><rect x="90.2669%" y="133" width="0.0145%" height="15" fill="rgb(231,60,39)" fg:x="24929" fg:w="4"/><text x="90.5169%" y="143.50"></text></g><g><title>poker-odds-rs`core::hash::BuildHasher::hash_one (69 samples, 0.25%)</title><rect x="90.2922%" y="133" width="0.2498%" height="15" fill="rgb(208,69,12)" fg:x="24936" fg:w="69"/><text x="90.5422%" y="143.50"></text></g><g><title>poker-odds-rs`core::slice::sort::shared::smallsort::insertion_sort_shift_left (157 samples, 0.57%)</title><rect x="90.5421%" y="133" width="0.5685%" height="15" fill="rgb(235,93,37)" fg:x="25005" fg:w="157"/><text x="90.7921%" y="143.50"></text></g><g><title>poker-odds-rs`&lt;std::hash::random::DefaultHasher as core::hash::Hasher&gt;::write (17 samples, 0.06%)</title><rect x="91.3314%" y="117" width="0.0616%" height="15" fill="rgb(213,116,39)" fg:x="25223" fg:w="17"/><text x="91.5814%" y="127.50"></text></g><g><title>poker-odds-rs`core::hash::BuildHasher::hash_one (58 samples, 0.21%)</title><rect x="91.3930%" y="117" width="0.2100%" height="15" fill="rgb(222,207,29)" fg:x="25240" fg:w="58"/><text x="91.6430%" y="127.50"></text></g><g><title>poker-odds-rs`&lt;std::hash::random::DefaultHasher as core::hash::Hasher&gt;::write (25 samples, 0.09%)</title><rect x="91.7261%" y="101" width="0.0905%" height="15" fill="rgb(206,96,30)" fg:x="25332" fg:w="25"/><text x="91.9761%" y="111.50"></text></g><g><title>poker-odds-rs`hashbrown::map::HashMap&lt;K,V,S,A&gt;::insert (215 samples, 0.78%)</title><rect x="91.1105%" y="133" width="0.7785%" height="15" fill="rgb(218,138,4)" fg:x="25162" fg:w="215"/><text x="91.3605%" y="143.50"></text></g><g><title>poker-odds-rs`hashbrown::raw::RawTable&lt;T,A&gt;::reserve_rehash (79 samples, 0.29%)</title><rect x="91.6030%" y="117" width="0.2861%" height="15" fill="rgb(250,191,14)" fg:x="25298" fg:w="79"/><text x="91.8530%" y="127.50"></text></g><g><title>poker-odds-rs`core::hash::BuildHasher::hash_one (20 samples, 0.07%)</title><rect x="91.8166%" y="101" width="0.0724%" height="15" fill="rgb(239,60,40)" fg:x="25357" fg:w="20"/><text x="92.0666%" y="111.50"></text></g><g><title>poker-odds-rs`poker_odds_rs::Hand::is_pair (3 samples, 0.01%)</title><rect x="91.8891%" y="133" width="0.0109%" height="15" fill="rgb(206,27,48)" fg:x="25377" fg:w="3"/><text x="92.1391%" y="143.50"></text></g><g><title>poker-odds-rs`poker_odds_rs::Hand::is_straight (4 samples, 0.01%)</title><rect x="91.8999%" y="133" width="0.0145%" height="15" fill="rgb(225,35,8)" fg:x="25380" fg:w="4"/><text x="92.1499%" y="143.50"></text></g><g><title>poker-odds-rs`poker_odds_rs::Hand::is_three_of_a_kind (4 samples, 0.01%)</title><rect x="91.9144%" y="133" width="0.0145%" height="15" fill="rgb(250,213,24)" fg:x="25384" fg:w="4"/><text x="92.1644%" y="143.50"></text></g><g><title>poker-odds-rs`poker_odds_rs::Hand::is_two_pair (5 samples, 0.02%)</title><rect x="91.9289%" y="133" width="0.0181%" height="15" fill="rgb(247,123,22)" fg:x="25388" fg:w="5"/><text x="92.1789%" y="143.50"></text></g><g><title>libsystem_malloc.dylib`_malloc_zone_malloc (23 samples, 0.08%)</title><rect x="94.7822%" y="117" width="0.0833%" height="15" fill="rgb(231,138,38)" fg:x="26176" fg:w="23"/><text x="95.0322%" y="127.50"></text></g><g><title>libsystem_malloc.dylib`_nanov2_free (53 samples, 0.19%)</title><rect x="94.8655%" y="117" width="0.1919%" height="15" fill="rgb(231,145,46)" fg:x="26199" fg:w="53"/><text x="95.1155%" y="127.50"></text></g><g><title>libsystem_malloc.dylib`free (15 samples, 0.05%)</title><rect x="95.0574%" y="117" width="0.0543%" height="15" fill="rgb(251,118,11)" fg:x="26252" fg:w="15"/><text x="95.3074%" y="127.50"></text></g><g><title>libsystem_malloc.dylib`nanov2_malloc (91 samples, 0.33%)</title><rect x="95.1153%" y="117" width="0.3295%" height="15" fill="rgb(217,147,25)" fg:x="26268" fg:w="91"/><text x="95.3653%" y="127.50"></text></g><g><title>libsystem_platform.dylib`_platform_memmove (18 samples, 0.07%)</title><rect x="95.4448%" y="117" width="0.0652%" height="15" fill="rgb(247,81,37)" fg:x="26359" fg:w="18"/><text x="95.6948%" y="127.50"></text></g><g><title>libsystem_malloc.dylib`_realloc (8 samples, 0.03%)</title><rect x="96.8679%" y="85" width="0.0290%" height="15" fill="rgb(209,12,38)" fg:x="26752" fg:w="8"/><text x="97.1179%" y="95.50"></text></g><g><title>libsystem_malloc.dylib`nanov2_pointer_size (17 samples, 0.06%)</title><rect x="97.0018%" y="37" width="0.0616%" height="15" fill="rgb(227,1,9)" fg:x="26789" fg:w="17"/><text x="97.2518%" y="47.50"></text></g><g><title>libsystem_malloc.dylib`_malloc_zone_realloc (35 samples, 0.13%)</title><rect x="96.9656%" y="53" width="0.1267%" height="15" fill="rgb(248,47,43)" fg:x="26779" fg:w="35"/><text x="97.2156%" y="63.50"></text></g><g><title>libsystem_malloc.dylib`nanov2_realloc (8 samples, 0.03%)</title><rect x="97.0634%" y="37" width="0.0290%" height="15" fill="rgb(221,10,30)" fg:x="26806" fg:w="8"/><text x="97.3134%" y="47.50"></text></g><g><title>libsystem_malloc.dylib`default_zone_realloc (3 samples, 0.01%)</title><rect x="97.0924%" y="53" width="0.0109%" height="15" fill="rgb(210,229,1)" fg:x="26814" fg:w="3"/><text x="97.3424%" y="63.50"></text></g><g><title>libsystem_malloc.dylib`_realloc (49 samples, 0.18%)</title><rect x="96.9367%" y="69" width="0.1774%" height="15" fill="rgb(222,148,37)" fg:x="26771" fg:w="49"/><text x="97.1867%" y="79.50"></text></g><g><title>libsystem_malloc.dylib`nanov2_realloc (3 samples, 0.01%)</title><rect x="97.1032%" y="53" width="0.0109%" height="15" fill="rgb(234,67,33)" fg:x="26817" fg:w="3"/><text x="97.3532%" y="63.50"></text></g><g><title>poker-odds-rs`alloc::raw_vec::RawVecInner&lt;A&gt;::reserve::do_reserve_and_handle (124 samples, 0.45%)</title><rect x="96.8136%" y="101" width="0.4490%" height="15" fill="rgb(247,98,35)" fg:x="26737" fg:w="124"/><text x="97.0636%" y="111.50"></text></g><g><title>poker-odds-rs`alloc::raw_vec::finish_grow (99 samples, 0.36%)</title><rect x="96.9041%" y="85" width="0.3585%" height="15" fill="rgb(247,138,52)" fg:x="26762" fg:w="99"/><text x="97.1541%" y="95.50"></text></g><g><title>libsystem_malloc.dylib`nanov2_size (41 samples, 0.15%)</title><rect x="97.1141%" y="69" width="0.1485%" height="15" fill="rgb(213,79,30)" fg:x="26820" fg:w="41"/><text x="97.3641%" y="79.50"></text></g><g><title>poker-odds-rs`&lt;alloc::vec::Vec&lt;T&gt; as alloc::vec::spec_from_iter::SpecFromIter&lt;T,I&gt;&gt;::from_iter (486 samples, 1.76%)</title><rect x="95.5100%" y="117" width="1.7598%" height="15" fill="rgb(246,177,23)" fg:x="26377" fg:w="486"/><text x="95.7600%" y="127.50"></text></g><g><title>poker-odds-rs`&lt;std::hash::random::DefaultHasher as core::hash::Hasher&gt;::write (109 samples, 0.39%)</title><rect x="97.2698%" y="117" width="0.3947%" height="15" fill="rgb(230,62,27)" fg:x="26863" fg:w="109"/><text x="97.5198%" y="127.50"></text></g><g><title>poker-odds-rs`DYLD-STUB$$free (5 samples, 0.02%)</title><rect x="97.6645%" y="117" width="0.0181%" height="15" fill="rgb(216,154,8)" fg:x="26972" fg:w="5"/><text x="97.9145%" y="127.50"></text></g><g><title>poker-odds-rs`DYLD-STUB$$malloc (3 samples, 0.01%)</title><rect x="97.6826%" y="117" width="0.0109%" height="15" fill="rgb(244,35,45)" fg:x="26977" fg:w="3"/><text x="97.9326%" y="127.50"></text></g><g><title>poker-odds-rs`__rdl_alloc (10 samples, 0.04%)</title><rect x="97.6971%" y="117" width="0.0362%" height="15" fill="rgb(251,115,12)" fg:x="26981" fg:w="10"/><text x="97.9471%" y="127.50"></text></g><g><title>poker-odds-rs`__rdl_dealloc (3 samples, 0.01%)</title><rect x="97.7333%" y="117" width="0.0109%" height="15" fill="rgb(240,54,50)" fg:x="26991" fg:w="3"/><text x="97.9833%" y="127.50"></text></g><g><title>poker-odds-rs`alloc::raw_vec::RawVecInner&lt;A&gt;::reserve::do_reserve_and_handle (6 samples, 0.02%)</title><rect x="97.7514%" y="117" width="0.0217%" height="15" fill="rgb(233,84,52)" fg:x="26996" fg:w="6"/><text x="98.0014%" y="127.50"></text></g><g><title>poker-odds-rs`core::hash::BuildHasher::hash_one (174 samples, 0.63%)</title><rect x="97.7731%" y="117" width="0.6300%" height="15" fill="rgb(207,117,47)" fg:x="27002" fg:w="174"/><text x="98.0231%" y="127.50"></text></g><g><title>poker-odds-rs`&lt;std::hash::random::DefaultHasher as core::hash::Hasher&gt;::write (18 samples, 0.07%)</title><rect x="98.7399%" y="101" width="0.0652%" height="15" fill="rgb(249,43,39)" fg:x="27269" fg:w="18"/><text x="98.9899%" y="111.50"></text></g><g><title>poker-odds-rs`core::hash::BuildHasher::hash_one (30 samples, 0.11%)</title><rect x="98.8051%" y="101" width="0.1086%" height="15" fill="rgb(209,38,44)" fg:x="27287" fg:w="30"/><text x="99.0551%" y="111.50"></text></g><g><title>libsystem_malloc.dylib`free_medium (3 samples, 0.01%)</title><rect x="99.0513%" y="85" width="0.0109%" height="15" fill="rgb(236,212,23)" fg:x="27355" fg:w="3"/><text x="99.3013%" y="95.50"></text></g><g><title>libsystem_kernel.dylib`madvise (3 samples, 0.01%)</title><rect x="99.0513%" y="69" width="0.0109%" height="15" fill="rgb(242,79,21)" fg:x="27355" fg:w="3"/><text x="99.3013%" y="79.50"></text></g><g><title>poker-odds-rs`&lt;std::hash::random::DefaultHasher as core::hash::Hasher&gt;::write (33 samples, 0.12%)</title><rect x="99.0658%" y="85" width="0.1195%" height="15" fill="rgb(211,96,35)" fg:x="27359" fg:w="33"/><text x="99.3158%" y="95.50"></text></g><g><title>poker-odds-rs`hashbrown::map::HashMap&lt;K,V,S,A&gt;::insert (236 samples, 0.85%)</title><rect x="98.4032%" y="117" width="0.8545%" height="15" fill="rgb(253,215,40)" fg:x="27176" fg:w="236"/><text x="98.6532%" y="127.50"></text></g><g><title>poker-odds-rs`hashbrown::raw::RawTable&lt;T,A&gt;::reserve_rehash (95 samples, 0.34%)</title><rect x="98.9137%" y="101" width="0.3440%" height="15" fill="rgb(211,81,21)" fg:x="27317" fg:w="95"/><text x="99.1637%" y="111.50"></text></g><g><title>poker-odds-rs`core::hash::BuildHasher::hash_one (20 samples, 0.07%)</title><rect x="99.1853%" y="85" width="0.0724%" height="15" fill="rgb(208,190,38)" fg:x="27392" fg:w="20"/><text x="99.4353%" y="95.50"></text></g><g><title>libsystem_malloc.dylib`_nanov2_free (27 samples, 0.10%)</title><rect x="99.6669%" y="101" width="0.0978%" height="15" fill="rgb(235,213,38)" fg:x="27525" fg:w="27"/><text x="99.9169%" y="111.50"></text></g><g><title>libsystem_malloc.dylib`_realloc (3 samples, 0.01%)</title><rect x="99.7972%" y="85" width="0.0109%" height="15" fill="rgb(237,122,38)" fg:x="27561" fg:w="3"/><text x="100.0472%" y="95.50"></text></g><g><title>libsystem_malloc.dylib`nanov2_pointer_size (9 samples, 0.03%)</title><rect x="99.8696%" y="37" width="0.0326%" height="15" fill="rgb(244,218,35)" fg:x="27581" fg:w="9"/><text x="100.1196%" y="47.50"></text></g><g><title>libsystem_malloc.dylib`_malloc_zone_realloc (18 samples, 0.07%)</title><rect x="99.8515%" y="53" width="0.0652%" height="15" fill="rgb(240,68,47)" fg:x="27576" fg:w="18"/><text x="100.1015%" y="63.50"></text></g><g><title>libsystem_malloc.dylib`nanov2_realloc (4 samples, 0.01%)</title><rect x="99.9022%" y="37" width="0.0145%" height="15" fill="rgb(210,16,53)" fg:x="27590" fg:w="4"/><text x="100.1522%" y="47.50"></text></g><g><title>libsystem_malloc.dylib`_realloc (28 samples, 0.10%)</title><rect x="99.8334%" y="69" width="0.1014%" height="15" fill="rgb(235,124,12)" fg:x="27571" fg:w="28"/><text x="100.0834%" y="79.50"></text></g><g><title>libsystem_malloc.dylib`nanov2_realloc (3 samples, 0.01%)</title><rect x="99.9240%" y="53" width="0.0109%" height="15" fill="rgb(224,169,11)" fg:x="27596" fg:w="3"/><text x="100.1740%" y="63.50"></text></g><g><title>poker-odds-rs`alloc::raw_vec::RawVec&lt;T,A&gt;::grow_one (59 samples, 0.21%)</title><rect x="99.7646%" y="101" width="0.2136%" height="15" fill="rgb(250,166,2)" fg:x="27552" fg:w="59"/><text x="100.0146%" y="111.50"></text></g><g><title>poker-odds-rs`alloc::raw_vec::finish_grow (45 samples, 0.16%)</title><rect x="99.8153%" y="85" width="0.1629%" height="15" fill="rgb(242,216,29)" fg:x="27566" fg:w="45"/><text x="100.0653%" y="95.50"></text></g><g><title>libsystem_malloc.dylib`nanov2_size (12 samples, 0.04%)</title><rect x="99.9348%" y="69" width="0.0435%" height="15" fill="rgb(230,116,27)" fg:x="27599" fg:w="12"/><text x="100.1848%" y="79.50"></text></g><g><title>poker-odds-rs`poker_odds_rs::Brancher::branch (25,821 samples, 93.50%)</title><rect x="6.4924%" y="149" width="93.4968%" height="15" fill="rgb(228,99,48)" fg:x="1793" fg:w="25821"/><text x="6.7424%" y="159.50">poker-odds-rs`poker_odds_rs::Brancher::branch</text></g><g><title>poker-odds-rs`poker_odds_rs::Hand::rank (2,221 samples, 8.04%)</title><rect x="91.9470%" y="133" width="8.0421%" height="15" fill="rgb(253,11,6)" fg:x="25393" fg:w="2221"/><text x="92.1970%" y="143.50">poker-odds-..</text></g><g><title>poker-odds-rs`poker_odds_rs::Hand::is_straight (202 samples, 0.73%)</title><rect x="99.2577%" y="117" width="0.7314%" height="15" fill="rgb(247,143,39)" fg:x="27412" fg:w="202"/><text x="99.5077%" y="127.50"></text></g><g><title>poker-odds-rs`alloc::raw_vec::finish_grow (3 samples, 0.01%)</title><rect x="99.9783%" y="101" width="0.0109%" height="15" fill="rgb(236,97,10)" fg:x="27611" fg:w="3"/><text x="100.2283%" y="111.50"></text></g><g><title>all (27,617 samples, 100%)</title><rect x="0.0000%" y="309" width="100.0000%" height="15" fill="rgb(233,208,19)" fg:x="0" fg:w="27617"/><text x="0.2500%" y="319.50"></text></g><g><title>libsystem_pthread.dylib`thread_start (27,600 samples, 99.94%)</title><rect x="0.0616%" y="293" width="99.9384%" height="15" fill="rgb(216,164,2)" fg:x="17" fg:w="27600"/><text x="0.3116%" y="303.50">libsystem_pthread.dylib`thread_start</text></g><g><title>libsystem_pthread.dylib`_pthread_start (27,600 samples, 99.94%)</title><rect x="0.0616%" y="277" width="99.9384%" height="15" fill="rgb(220,129,5)" fg:x="17" fg:w="27600"/><text x="0.3116%" y="287.50">libsystem_pthread.dylib`_pthread_start</text></g><g><title>poker-odds-rs`std::sys::pal::unix::thread::Thread::new::thread_start (27,599 samples, 99.93%)</title><rect x="0.0652%" y="261" width="99.9348%" height="15" fill="rgb(242,17,10)" fg:x="18" fg:w="27599"/><text x="0.3152%" y="271.50">poker-odds-rs`std::sys::pal::unix::thread::Thread::new::thread_start</text></g><g><title>poker-odds-rs`core::ops::function::FnOnce::call_once{{vtable.shim}} (27,599 samples, 99.93%)</title><rect x="0.0652%" y="245" width="99.9348%" height="15" fill="rgb(242,107,0)" fg:x="18" fg:w="27599"/><text x="0.3152%" y="255.50">poker-odds-rs`core::ops::function::FnOnce::call_once{{vtable.shim}}</text></g><g><title>poker-odds-rs`std::sys::backtrace::__rust_begin_short_backtrace (27,599 samples, 99.93%)</title><rect x="0.0652%" y="229" width="99.9348%" height="15" fill="rgb(251,28,31)" fg:x="18" fg:w="27599"/><text x="0.3152%" y="239.50">poker-odds-rs`std::sys::backtrace::__rust_begin_short_backtrace</text></g><g><title>poker-odds-rs`poker_odds_rs::Brancher::branch (27,597 samples, 99.93%)</title><rect x="0.0724%" y="213" width="99.9276%" height="15" fill="rgb(233,223,10)" fg:x="20" fg:w="27597"/><text x="0.3224%" y="223.50">poker-odds-rs`poker_odds_rs::Brancher::branch</text></g><g><title>poker-odds-rs`poker_odds_rs::Brancher::branch (27,597 samples, 99.93%)</title><rect x="0.0724%" y="197" width="99.9276%" height="15" fill="rgb(215,21,27)" fg:x="20" fg:w="27597"/><text x="0.3224%" y="207.50">poker-odds-rs`poker_odds_rs::Brancher::branch</text></g><g><title>poker-odds-rs`poker_odds_rs::Brancher::branch (27,592 samples, 99.91%)</title><rect x="0.0905%" y="181" width="99.9095%" height="15" fill="rgb(232,23,21)" fg:x="25" fg:w="27592"/><text x="0.3405%" y="191.50">poker-odds-rs`poker_odds_rs::Brancher::branch</text></g><g><title>poker-odds-rs`poker_odds_rs::Brancher::branch (27,474 samples, 99.48%)</title><rect x="0.5178%" y="165" width="99.4822%" height="15" fill="rgb(244,5,23)" fg:x="143" fg:w="27474"/><text x="0.7678%" y="175.50">poker-odds-rs`poker_odds_rs::Brancher::branch</text></g><g><title>poker-odds-rs`poker_odds_rs::Hand::rank (3 samples, 0.01%)</title><rect x="99.9891%" y="149" width="0.0109%" height="15" fill="rgb(226,81,46)" fg:x="27614" fg:w="3"/><text x="100.2391%" y="159.50"></text></g></svg></svg>

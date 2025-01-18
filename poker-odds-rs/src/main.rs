@@ -2,7 +2,7 @@ use strum_macros::EnumIter;
 use std::collections::HashMap;
 use std::thread;
 use std::time::SystemTime;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, RwLock};
 use std::io;
 
 
@@ -475,11 +475,11 @@ struct Brancher {
     hero: Hand,
     drawn: BitSet,
     board: u64,
-    memo: Arc<Mutex<HashMap<u64, f32>>>,
+    memo: Arc<RwLock<HashMap<u64, f32>>>,
 }
 
 impl Brancher {
-    fn new(game: Game, board: u64, memo: Arc<Mutex<HashMap<u64, f32>>>) -> Self {
+    fn new(game: Game, board: u64, memo: Arc<RwLock<HashMap<u64, f32>>>) -> Self {
         let hero = game.hands[game.hero_pos].clone();
         let mut drawn = BitSet::new();
 
@@ -500,7 +500,7 @@ impl Brancher {
     }
 
     fn branch(&mut self, board: &mut u64) -> f32 {
-        if let Some(val) = self.memo.lock().unwrap().get(&self.drawn.s) {
+        if let Some(val) = self.memo.read().unwrap().get(&self.drawn.s) {
             return *val;
         }
     
@@ -516,7 +516,7 @@ impl Brancher {
                     hero_rank > v || (hero_rank == v && hero_kicker > hand.kicker)
                 });
             let val = if beats_all { 1. } else { 0. };
-            self.memo.lock().unwrap().insert(self.drawn.s, val);
+            self.memo.write().unwrap().insert(self.drawn.s, val);
             return val;    
         }
 
@@ -530,7 +530,7 @@ impl Brancher {
         }
 
         pb /= (52 - self.drawn.len()) as f32;
-        self.memo.lock().unwrap().insert(self.drawn.s, pb);
+        self.memo.write().unwrap().insert(self.drawn.s, pb);
         pb
     }
 
@@ -587,7 +587,7 @@ impl Brancher {
         already on the board to avoid overhead
         of copying and moving onto threads.
         */
-        if let Some(val) = self.memo.lock().unwrap().get(&self.drawn.s) {
+        if let Some(val) = self.memo.read().unwrap().get(&self.drawn.s) {
             return *val;
         }
 
@@ -599,7 +599,7 @@ impl Brancher {
             p = self.branch(&mut board);
         } else {
             p = self.branch_parallel(nthreads);
-            self.memo.lock().unwrap().insert(self.drawn.s, p);
+            self.memo.write().unwrap().insert(self.drawn.s, p);
         }
         println!("Equity is {:}.", p);
         p
@@ -619,9 +619,10 @@ fn main() {
         1 thread (Rust): 60 seconds 
         8 threads - Without sharing memo: 60 seconds
         8 threads - With sharing memo: 16 seconds.
-        8 threads with opt-level 3 + sharing memo: 4 seconds.
+        8 threads with opt-level 3 + sharing memo: 5 seconds.
+        8 threads w/ opt l3 + sharing memo w/ rwlock: < 3 seconds
     */
-    let memo = Arc::new(Mutex::new(HashMap::new()));
+    let memo = Arc::new(RwLock::new(HashMap::new()));
 
     loop {
         println!("# active players [0 to exit]:");

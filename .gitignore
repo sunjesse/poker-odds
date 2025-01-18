@@ -2,3 +2,4 @@ __pycache__/
 poker-rust-rs/target/
 target/
 *.swp
+.DS_STORE
