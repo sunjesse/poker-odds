@@ -2,7 +2,7 @@ use strum_macros::EnumIter;
 use std::collections::HashMap;
 use std::thread;
 use std::time::SystemTime;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use dashmap::DashMap;
 use std::io;
 
