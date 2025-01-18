@@ -265,7 +265,7 @@ impl Hand {
             _rank = Rank::FullHouse;
         } else if self.is_flush() {
             _rank = Rank::Flush;
-        } else if self.is_straight() {
+        } else if self.is_straight(&cards_key) {
             _rank = Rank::Straight;
         } else if self.is_three_of_a_kind() {
             _rank = Rank::Trips;
@@ -342,25 +342,33 @@ impl Hand {
         false
     }
 
-    fn is_straight(&mut self) -> bool {
-        let mut keys: Vec<u8> = self.values.iter().map(|(k, _)| *k).collect();
-        keys.sort();
+    fn is_straight(&mut self, cards: &u64) -> bool {
+        let mut key_bin: u16 = 0;
+        // the following is all twos
+        let mut repr: u64 = 1 | 1 << 1 | 1 << 2 | 1 << 3;
 
-        if let Some(last) = keys.last() {
-            if *last == 14 {
-                keys.insert(0, 1);
+        for i in 0..13 {
+            if (*cards) & repr > 0 {
+                key_bin |= 1 << (i + 1);  
+                // if is ace
+                if i == 12 { 
+                    key_bin |= 1;
+                }
             }
+            repr <<= 4;
         }
 
-        if keys.len() >= 5 {
-            for i in (0..(keys.len()-4).max(0)).rev() {
-                if keys[i+4] == keys[i] + 4 {
-                    self.kicker = keys[i+4] as u32;
-                    return true;
-                }
-            } 
+        let mut mask: u16 = 1 << 14 | 1 << 13 | 1 << 12 | 1 << 11 | 1 << 10;
+        
+        for i in 0..10 {
+            if (mask & key_bin).count_ones() == 5 {
+                self.kicker = 14 - i; 
+                return true;
+            }
+            mask >>= 1;
         }
         false
+        
     }
 
     fn is_three_of_a_kind(&mut self) -> bool {
