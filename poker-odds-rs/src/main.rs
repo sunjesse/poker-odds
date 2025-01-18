@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::thread;
 use std::time::SystemTime;
 use std::sync::{Arc, RwLock};
+use dashmap::DashMap;
 use std::io;
 
 
@@ -475,11 +476,11 @@ struct Brancher {
     hero: Hand,
     drawn: BitSet,
     board: u64,
-    memo: Arc<RwLock<HashMap<u64, f32>>>,
+    memo: Arc<DashMap<u64, f32>>,
 }
 
 impl Brancher {
-    fn new(game: Game, board: u64, memo: Arc<RwLock<HashMap<u64, f32>>>) -> Self {
+    fn new(game: Game, board: u64, memo: Arc<DashMap<u64, f32>>) -> Self {
         let hero = game.hands[game.hero_pos].clone();
         let mut drawn = BitSet::new();
 
@@ -500,7 +501,7 @@ impl Brancher {
     }
 
     fn branch(&mut self, board: &mut u64) -> f32 {
-        if let Some(val) = self.memo.read().unwrap().get(&self.drawn.s) {
+        if let Some(val) = self.memo.get(&self.drawn.s) {
             return *val;
         }
     
@@ -516,7 +517,7 @@ impl Brancher {
                     hero_rank > v || (hero_rank == v && hero_kicker > hand.kicker)
                 });
             let val = if beats_all { 1. } else { 0. };
-            self.memo.write().unwrap().insert(self.drawn.s, val);
+            self.memo.insert(self.drawn.s, val);
             return val;    
         }
 
@@ -530,7 +531,7 @@ impl Brancher {
         }
 
         pb /= (52 - self.drawn.len()) as f32;
-        self.memo.write().unwrap().insert(self.drawn.s, pb);
+        self.memo.insert(self.drawn.s, pb);
         pb
     }
 
@@ -587,7 +588,7 @@ impl Brancher {
         already on the board to avoid overhead
         of copying and moving onto threads.
         */
-        if let Some(val) = self.memo.read().unwrap().get(&self.drawn.s) {
+        if let Some(val) = self.memo.get(&self.drawn.s) {
             return *val;
         }
 
@@ -599,7 +600,7 @@ impl Brancher {
             p = self.branch(&mut board);
         } else {
             p = self.branch_parallel(nthreads);
-            self.memo.write().unwrap().insert(self.drawn.s, p);
+            self.memo.insert(self.drawn.s, p);
         }
         println!("Equity is {:}.", p);
         p
@@ -621,8 +622,9 @@ fn main() {
         8 threads - With sharing memo: 16 seconds.
         8 threads with opt-level 3 + sharing memo: 5 seconds.
         8 threads w/ opt l3 + sharing memo w/ rwlock: < 3 seconds
+        8 threads w/ opt l3 + memo as dashmap: < 1 seconds
     */
-    let memo = Arc::new(RwLock::new(HashMap::new()));
+    let memo: Arc<DashMap<u64, f32>> = Arc::new(DashMap::new());
 
     loop {
         println!("# active players [0 to exit]:");
