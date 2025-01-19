@@ -362,7 +362,7 @@ impl Hand {
         let mut mask: u16 = 1 << 14 | 1 << 13 | 1 << 12 | 1 << 11 | 1 << 10;
         
         for i in 0..11 {
-            if (mask & key_bin).count_ones() == 5 {
+            if mask & key_bin == mask {
                 self.kicker = 14 - i; 
                 return true;
             }
