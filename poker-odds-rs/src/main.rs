@@ -349,7 +349,7 @@ impl Hand {
         let mut repr: u64 = 1 | 1 << 1 | 1 << 2 | 1 << 3;
 
         for i in 0..13 {
-            if (*cards) & repr > 0 {
+            if *cards & repr > 0 {
                 key_bin |= 1 << (i + 1);  
                 // if is ace
                 if i == 12 { 
