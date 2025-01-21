@@ -301,7 +301,7 @@ impl Hand {
         for i in 0..9 {
             for sh in 0..4 {
                 let valid: bool = mask & *cards == mask;
-                if (i < 8 && valid) || (i == 8 && valid && ((*cards & aces) >> (48 + sh) == 1)) {
+                if (i < 8 && valid) || (i == 8 && valid && ((*cards & aces) & (1 << (48 + sh)) > 0)) {
                     self.kicker = 13 - i as u32;
                     return true;
                 }
