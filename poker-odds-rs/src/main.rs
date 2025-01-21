@@ -296,7 +296,7 @@ impl Hand {
         // start at king high straight flush of suit club.
         // no need to check royal flush as we check that before.
         let mut mask: u64 = 1 << 28 | 1 << 32 | 1 << 36 | 1 << 40 | 1 << 44;
-        let aces: u64 = 1 << 48 | 1 << 49 | 1 << 50 | 1 << 50;
+        let aces: u64 = 1 << 48 | 1 << 49 | 1 << 50 | 1 << 51;
 
         for i in 0..9 {
             for sh in 0..4 {
