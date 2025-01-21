@@ -258,7 +258,7 @@ impl Hand {
 
         if self.is_royal_flush(&cards_key) {
             _rank = Rank::RoyalFlush;
-        } else if self.is_straight_flush() {
+        } else if self.is_straight_flush(&cards_key) {
             _rank = Rank::StraightFlush;
         } else if self.is_quads() {
             _rank = Rank::Quads;
@@ -283,30 +283,32 @@ impl Hand {
     }
 
     fn is_royal_flush(&self, cards: &u64) -> bool {
-        // repr := cards in a royal flush of suit clubs. shift left for next suit.
-        let mut repr: u64 = 1 << 32 | 1 << 36 | 1 << 40 | 1 << 44 | 1 << 48;
+        // mask := cards in a royal flush of suit clubs. shift left for next suit.
+        let mut mask: u64 = 1 << 32 | 1 << 36 | 1 << 40 | 1 << 44 | 1 << 48;
         (0..4)
             .fold(false, |acc, x| { 
-                repr <<= x;
-                acc | ((repr & *cards) == repr)
+                mask <<= x;
+                acc | ((mask & *cards) == mask)
             })
     }
 
-    fn is_straight_flush(&mut self) -> bool {
-        for (_suit, values) in self.suits.iter() {
-            if values.len() >= 5 {
-                let mut vals: Vec<u8> = values.to_vec();
-                vals.sort();
-                if *vals.last().unwrap() == 14 {
-                    vals.insert(0, 1);
+    fn is_straight_flush(&mut self, cards: &u64) -> bool {
+        // start at king high straight flush of suit club.
+        // no need to check royal flush as we check that before.
+        let mut mask: u64 = 1 << 28 | 1 << 32 | 1 << 36 | 1 << 40 | 1 << 44;
+        let aces: u64 = 1 << 48 | 1 << 49 | 1 << 50 | 1 << 50;
+
+        for i in 0..9 {
+            for sh in 0..4 {
+                let valid: bool = mask & *cards == mask;
+                if (i < 8 && valid) || (i == 8 && valid && ((*cards & aces) >> (48 + sh) == 1)) {
+                    self.kicker = 13 - i as u32;
+                    return true;
                 }
-                for i in (0..(vals.len()-5)).rev() {
-                    if vals[i+4] - vals[i] == 4 {
-                        self.kicker = values[i+4] as u32;
-                        return true;
-                    }
-                }
+                mask <<= 1; 
             }
+            // go to next largest straight flush
+            mask >>= 8;
         }
         false
     } 
