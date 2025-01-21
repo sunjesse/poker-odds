@@ -231,7 +231,7 @@ impl Hand {
                 *self._values.entry(value).or_insert(0) += 1;
 
                 // TODO: fix this. Hacky way, but it works for now.
-                // This is causing ~9% of the
+                // vec re-allocation is causing ~9% of total runtime.
                 self.values = self._values.iter()
                         .filter(|&(_, y)| *y != 0)
                         .map(|(k, v)| (*k, *v))
