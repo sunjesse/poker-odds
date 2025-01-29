@@ -134,124 +134,33 @@ impl Card {
 #[derive(Debug, Clone)]
 struct Hand {
     hole: (Card, Card),
+    hole_b: u64,
     memo: HashMap<u64, Rank>,
     kicker: u32,
-    prev_board: u64,
-    _values: HashMap<u8, u8>,
-    values: Vec<(u8, u8)>,
-    suits: HashMap<Suits, Vec<u8>>,
 }
 
 impl Hand {
     fn new(hole: (Card, Card)) -> Self {
-        let mut _values = HashMap::with_capacity(13);
-        let mut suits = HashMap::with_capacity(4);
-
-        suits.entry(hole.0.suit)
-            .or_insert(Vec::new())
-            .push(hole.0.value as u8);
-
-        suits.entry(hole.1.suit)
-            .or_insert(Vec::new())
-            .push(hole.1.value as u8);
-
-        *_values.entry(hole.0.value as u8)
-            .or_insert(0) += 1;
-
-        *_values.entry(hole.1.value as u8)
-            .or_insert(0) += 1;
-
-        let values: Vec<_> = _values.iter()
-            .map(|(k, v)| (*k, *v))
-            .collect();
-
-        println!("{:?} {:?} {:?}", values, _values, suits);
-
         Hand {
             hole: hole,
+            hole_b: 1 << hole.0.idx | 1 << hole.1.idx,
             memo: HashMap::new(),
             kicker: 0, 
-            prev_board: 0,
-            _values: _values,
-            values: values,
-            suits: suits,
         } 
     }
 
 
     fn rank(&mut self, board: &u64) -> Rank {
-        let cards_key: u64 = 1 << self.hole.0.idx | 1 << self.hole.1.idx | *board; 
+        let cards_key: u64 = self.hole_b | *board; 
 
         if self.memo.contains_key(&cards_key) {
             return self.memo[&cards_key];
         }
 
-        let mut diff: u64 = *board ^ self.prev_board;
-
-        while diff != 0 {
-            /*
-            Backwards Conversion:
-                 suit = idx % 4;
-                 value = (idx - (idx%4))/4 + 2
-
-            We use a trailing zeros truncations trick
-            to avoid the amount of branch mispredictions
-            as the number of 1 bits is low.
-            */
-            let i = diff.trailing_zeros() as u8;
-            let value: u8 = (i - (i%4))/4 + 2;
-            let suit: Suits = match i % 4 {
-                0 => Suits::Clubs,
-                1 => Suits::Hearts,
-                2 => Suits::Diamonds,
-                3 => Suits::Spades,
-                _ => unreachable!(),
-            }; 
-
-            // it got removed
-            if self.prev_board & (1 << i) > 0 {
-                if let Some(v) = self._values.get_mut(&value) {
-                    *v -= 1; //  remove from self._values
-                    if *v == 0 {
-                        if let Some(j) = self.values.iter().position(|x| x.0 == value) {
-                            self.values.remove(j); // remove from self.values
-                        }
-                    }
-                }
-
-                if let Some(l) = self.suits.get_mut(&suit) {
-                    if let Some(j) = l.iter().position(|x| *x == value) {
-                        (*l).remove(j); // remove from suits
-                    }
-                }
-            } else { // it got added
-                self.suits.entry(suit)
-                    .or_insert(Vec::new())
-                    .push(value);
-                *self._values.entry(value).or_insert(0) += 1;
-
-                // TODO: fix this. Hacky way, but it works for now.
-                // vec re-allocation is causing ~9% of total runtime.
-                self.values = self._values.iter()
-                        .filter(|&(_, y)| *y != 0)
-                        .map(|(k, v)| (*k, *v))
-                        .collect();
-            }
-            diff -= 1 << i; // flip trailing bit i from 1->0
-        }
-
-        self.values.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
-
-        self.prev_board = *board;
-
         let mut _rank: Rank = Rank::HighCard;
         
         // TODO [optimization]: 
-        // Can make all these computations bitwise on u64s to
-        // avoid the need for creating HashMaps, vecs,
-        // and other objects.
-
-        // Furthermore, the lower down the if-else statement,
+        // The lower down the if-else statement,
         // the more likely the hand is. We are doing quite
         // a bit of branching here. TODO: Reduce amount of branching
         // needed?
@@ -260,23 +169,23 @@ impl Hand {
             _rank = Rank::RoyalFlush;
         } else if self.is_straight_flush(&cards_key) {
             _rank = Rank::StraightFlush;
-        } else if self.is_quads() {
+        } else if self.is_quads(&cards_key) {
             _rank = Rank::Quads;
-        } else if self.is_fullhouse() {
+        } else if self.is_fullhouse(&cards_key) {
             _rank = Rank::FullHouse;
-        } else if self.is_flush() {
+        } else if self.is_flush(&cards_key) {
             _rank = Rank::Flush;
         } else if self.is_straight(&cards_key) {
             _rank = Rank::Straight;
-        } else if self.is_three_of_a_kind() {
+        } else if self.is_three_of_a_kind(&cards_key) {
             _rank = Rank::Trips;
-        } else if self.is_two_pair() {
+        } else if self.is_two_pair(&cards_key) {
             _rank = Rank::TwoPair;
-        } else if self.is_pair() {
+        } else if self.is_pair(&cards_key) {
             _rank = Rank::Pair;
         } else {
             // _rank is Rank::HighCard.
-            self.compute_kicker_as_best_five(2);
+            self.compute_kicker_for_high_card(&cards_key);
         }
         self.memo.insert(cards_key, _rank);
         _rank
@@ -313,34 +222,63 @@ impl Hand {
         false
     } 
 
-    fn is_quads(&mut self) -> bool {
-        if let Some(x) = self.values.last() {
-            if x.1 == 4 {
-                self.compute_kicker_as_best_five(2);
+    fn is_quads(&mut self, cards: &u64) -> bool {
+        let mut mask: u64 = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
+        let mut tmp: u32 = 0;
+        for i in 0..13 {
+            if tmp == 0 && mask & *cards == mask {
+                tmp = 14 - i; 
+            } else if tmp > 0 && mask & *cards > 0 {
+                // find the kicker
+                self.kicker = tmp * 100 + 14 - i;
                 return true;
             }
+            mask >>= 4;
         }
         false
     } 
     
-    fn is_fullhouse(&mut self) -> bool {
-        if self.values.len() >= 2 {
-            if let (Some(x), Some(y)) = (self.values.last(), self.values.get(self.values.len() - 2)) {
-                if y.1 >= 2 && x.1 >= 3 {
-                    self.compute_kicker_as_best_five(2);
-                    return true;
+    fn is_fullhouse(&mut self, cards: &u64) -> bool {
+        let mut mask: u64 = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
+        let mut tmp: u32 = 0;
+
+        for i in 0..13 {
+            if (mask & *cards).count_ones() == 3 {
+                tmp = 14 - i;
+                break;
+            }
+            mask >>= 4;
+        }
+
+        mask = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
+        if tmp > 0 {
+            for i in 0..13 {
+                // not the three of a kind
+                if i + tmp != 14 {
+                    if (mask & *cards).count_ones() >= 2 {
+                        self.kicker = tmp * 100 + 14 - i;
+                        return true;
+                    } 
                 }
+                mask >>= 4;
             }
         }
-        false
+        false 
     }
 
-    fn is_flush(&mut self) -> bool {
-        for (_, v) in self.suits.iter() {
-            if v.len() >= 5 {
-                self.kicker = *v.iter().max().unwrap() as u32;
+    fn is_flush(&mut self, cards: &u64) -> bool {
+        // start with clubs
+        let mut mask: u64 = (0..52).step_by(4).fold(0, |acc, x| acc | (1 << x)); 
+        for _ in 0..4 {
+            let m: u64 = mask & *cards;
+            if m.count_ones() >= 5 {
+                // this won't return the exact highest card value, but its a monotonic
+                // function and we save some instructions by avoiding needing to call %
+                // to compute exact value.
+                self.kicker = 64 - m.leading_zeros(); 
                 return true;
             }
+            mask <<= 1;
         }
         false
     }
@@ -374,45 +312,114 @@ impl Hand {
         
     }
 
-    fn is_three_of_a_kind(&mut self) -> bool {
-        if let Some(x) = self.values.last() {
-            if x.1 == 3 {
-                self.compute_kicker_as_best_five(3);
-                return true;
-            }
-        }
-        false
-    }
+    fn is_three_of_a_kind(&mut self, cards: &u64) -> bool {
+        // this assumes its not a full house
+        let mut mask: u64 = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
+        let mut tmp: u32 = 0;
+        let mut count: usize = 0;
 
-    fn is_two_pair(&mut self) -> bool {
-        if self.values.len() >= 2 {
-            if let (Some(x), Some(y)) = (self.values.last(), self.values.get(self.values.len() - 2)) {
-                if x.1 == 2 && y.1 == 2 {
-                    self.compute_kicker_as_best_five(3);
+        for i in 0..13 {
+            if (mask & *cards).count_ones() == 3 {
+                tmp = 14 - i;
+                count += 1;
+                break;
+            }
+            mask >>= 4;
+        }
+
+        if count > 0 {
+            mask = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
+            for i in 0..13 {
+                if mask & *cards > 0 {
+                    tmp = tmp * 100 + 14 - i;
+                    count += 1;
+                }
+                if count == 3 {
+                    self.kicker = tmp;
                     return true;
                 }
+                mask >>= 4;
             }
         }
         false
     }
 
-    fn is_pair(&mut self) -> bool {
-        if let Some(x) = self.values.last() {
-            if x.1 == 2 {
-                self.compute_kicker_as_best_five(4);
-                return true;
+    fn is_two_pair(&mut self, cards: &u64) -> bool {
+        let mut mask: u64 = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
+        let mut tmp: u32 = 0;
+        let mut count: usize = 0;
+
+        // find the two pair first
+        for i in 0..13 {
+            if (mask & *cards).count_ones() == 2 {
+                tmp = tmp * 100 + 14 - i;
+                count += 1;
+            } 
+            mask >>= 4;
+        }
+
+        // then find the kicker
+        if count >= 2 {
+            mask = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
+            for i in 0..13 {
+                if mask & *cards > 0 {
+                    self.kicker = tmp * 100 + 14 - i;
+                    return true;
+                }
+                mask >>= 4;
             }
         }
         false
     }
 
-    fn compute_kicker_as_best_five(&mut self, ubound: usize) {
-        let mut _kicker: u32 = 0;
-        for i in 0..(self.values.len().min(ubound)) {
-            _kicker *= 100;
-            _kicker += self.values[self.values.len()-i-1].0 as u32;
+    fn is_pair(&mut self, cards: &u64) -> bool {
+        let mut mask: u64 = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
+        let mut tmp: u32 = 0;
+        let mut count: usize = 0;
+
+        for i in 0..13 {
+            if (mask & *cards).count_ones() == 2 {
+                tmp = tmp * 100 + 14 - i;
+                count += 1;
+                break;
+            }
+            mask >>= 4;
         }
-        self.kicker = _kicker;
+
+        if count > 0 {
+            mask = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
+            for i in 0..13 {
+                if mask & *cards > 0 {
+                    tmp = tmp * 100 + 14 - i;
+                    count += 1;
+                } 
+                if count == 4 {
+                    self.kicker = tmp;
+                    return true;
+                }
+                mask >>= 4; 
+            } 
+        }
+        false
+    }
+
+    fn compute_kicker_for_high_card(&mut self, cards: &u64) {
+        let mut mask: u64 = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
+        let mut tmp: u32 = 0;
+        let mut count: usize = 0;
+
+        for i in 0..13 {
+            if (mask & *cards).count_ones() == 1 {
+                tmp = tmp * 100 + 14 - i;
+                count += 1;
+            }
+            
+            if count == 5 {
+                self.kicker = tmp;
+                break;
+            }
+            mask >>= 4;
+        }
     }
 
     fn from_string(s: String) -> Self {
@@ -635,6 +642,7 @@ fn main() {
         8 threads with opt-level 3 + sharing memo: 5 seconds.
         8 threads w/ opt l3 + sharing memo w/ rwlock: < 3 seconds
         8 threads w/ opt l3 + memo as dashmap: < 1 seconds
+        The row above + all computations binary - remove heap allocation during Hand.rank call: < 400 ms
     */
     let memo: Arc<DashMap<u64, f32>> = Arc::new(DashMap::new());
 
