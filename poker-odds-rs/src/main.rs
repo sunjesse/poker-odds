@@ -210,7 +210,7 @@ impl Hand {
         for i in 0..9 {
             for sh in 0..4 {
                 let valid: bool = mask & *cards == mask;
-                if (i < 8 && valid) || (i == 8 && valid && ((*cards & aces) & (1 << (48 + sh)) > 0)) {
+                if (i < 8 && valid) || (i == 8 && valid && ((*cards & aces) & (1 << (48 + sh)) != 0)) {
                     self.kicker = 13 - i as u32;
                     return true;
                 }
@@ -226,10 +226,19 @@ impl Hand {
         let mut mask: u64 = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
         let mut tmp: u32 = 0;
         for i in 0..13 {
-            if tmp == 0 && mask & *cards == mask {
+            if mask & *cards == mask {
                 tmp = 14 - i; 
-            } else if tmp > 0 && mask & *cards > 0 {
-                // find the kicker
+            } 
+            mask >>= 4;
+        }
+
+        if tmp == 0 {
+            return false;
+        }
+
+        mask = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
+        for i in 0..13 {
+            if i + tmp != 14 && mask & *cards != 0 {
                 self.kicker = tmp * 100 + 14 - i;
                 return true;
             }
@@ -250,18 +259,20 @@ impl Hand {
             mask >>= 4;
         }
 
+        if tmp == 0 {
+            return false;
+        }
+
         mask = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
-        if tmp > 0 {
-            for i in 0..13 {
-                // not the three of a kind
-                if i + tmp != 14 {
-                    if (mask & *cards).count_ones() >= 2 {
-                        self.kicker = tmp * 100 + 14 - i;
-                        return true;
-                    } 
-                }
-                mask >>= 4;
+        for i in 0..13 {
+            // not the three of a kind
+            if i + tmp != 14 {
+                if (mask & *cards).count_ones() >= 2 {
+                    self.kicker = tmp * 100 + 14 - i;
+                    return true;
+                } 
             }
+            mask >>= 4;
         }
         false 
     }
@@ -289,7 +300,7 @@ impl Hand {
         let mut repr: u64 = 1 | 1 << 1 | 1 << 2 | 1 << 3;
 
         for i in 0..13 {
-            if *cards & repr > 0 {
+            if *cards & repr != 0 {
                 key_bin |= 1 << (i + 1);  
                 // if is ace
                 if i == 12 { 
@@ -327,19 +338,21 @@ impl Hand {
             mask >>= 4;
         }
 
-        if count > 0 {
-            mask = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
-            for i in 0..13 {
-                if mask & *cards > 0 {
-                    tmp = tmp * 100 + 14 - i;
-                    count += 1;
-                }
-                if count == 3 {
-                    self.kicker = tmp;
-                    return true;
-                }
-                mask >>= 4;
+        if count == 0 {
+            return false;
+        }
+
+        mask = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
+        for i in 0..13 {
+            if mask & *cards != 0 {
+                tmp = tmp * 100 + 14 - i;
+                count += 1;
             }
+            if count == 3 {
+                self.kicker = tmp;
+                return true;
+            }
+            mask >>= 4;
         }
         false
     }
@@ -358,17 +371,19 @@ impl Hand {
             mask >>= 4;
         }
 
-        // then find the kicker
-        if count >= 2 {
-            mask = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
-            for i in 0..13 {
-                if mask & *cards > 0 {
-                    self.kicker = tmp * 100 + 14 - i;
-                    return true;
-                }
-                mask >>= 4;
-            }
+        if count < 2 {
+            return false;
         }
+
+        // then find the kicker
+        mask = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
+        for i in 0..13 {
+            if mask & *cards != 0 {
+                self.kicker = tmp * 100 + 14 - i;
+                return true;
+            }
+            mask >>= 4;
+    }
         false
     }
 
@@ -386,20 +401,22 @@ impl Hand {
             mask >>= 4;
         }
 
-        if count > 0 {
-            mask = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
-            for i in 0..13 {
-                if mask & *cards > 0 {
-                    tmp = tmp * 100 + 14 - i;
-                    count += 1;
-                } 
-                if count == 4 {
-                    self.kicker = tmp;
-                    return true;
-                }
-                mask >>= 4; 
-            } 
+        if count == 0 {
+            return false;
         }
+
+        mask = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
+        for i in 0..13 {
+            if mask & *cards != 0 {
+                tmp = tmp * 100 + 14 - i;
+                count += 1;
+            } 
+            if count == 4 {
+                self.kicker = tmp;
+                return true;
+            }
+            mask >>= 4; 
+        } 
         false
     }
 
