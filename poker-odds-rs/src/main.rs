@@ -551,7 +551,7 @@ impl Brancher {
                     let v = hand.rank(board);
                     hero_rank > v || (hero_rank == v && hero_kicker > hand.kicker)
                 });
-            let val = if beats_all { 1. } else { 0. };
+            let val: f32 = if beats_all { 1. } else { 0. };
             self.memo.insert(self.drawn.s, val);
             return val;    
         }
