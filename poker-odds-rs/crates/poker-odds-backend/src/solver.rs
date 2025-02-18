@@ -1,11 +1,10 @@
-use strum_macros::EnumIter;
+use dashmap::DashMap;
 use std::collections::HashMap;
+use std::io;
+use std::sync::Arc;
 use std::thread;
 use std::time::SystemTime;
-use std::sync::Arc;
-use dashmap::DashMap;
-use std::io;
-
+use strum_macros::EnumIter;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 enum Rank {
@@ -20,7 +19,6 @@ enum Rank {
     StraightFlush = 8,
     RoyalFlush = 9,
 }
-
 
 #[derive(Debug, Hash, Eq, PartialEq, Clone, Copy, EnumIter)]
 enum Suits {
@@ -37,11 +35,10 @@ impl Suits {
             'h' => Suits::Hearts,
             's' => Suits::Spades,
             'd' => Suits::Diamonds,
-             _  => panic!("not a valid char"),
+            _ => panic!("not a valid char"),
         }
     }
 }
-
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, EnumIter)]
 enum Value {
@@ -57,7 +54,7 @@ enum Value {
     Jack = 11,
     Queen = 12,
     King = 13,
-    Ace = 14
+    Ace = 14,
 }
 
 impl From<u8> for Value {
@@ -81,7 +78,6 @@ impl From<u8> for Value {
     }
 }
 
-
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 struct Card {
@@ -93,14 +89,9 @@ struct Card {
 impl Card {
     fn new(value: Value, suit: Suits) -> Self {
         let mut _idx = value as usize * 4 - 8;
-        for (i, s) in [
-            Suits::Clubs,
-            Suits::Hearts,
-            Suits::Spades,
-            Suits::Diamonds,
-        ]
-        .iter()
-        .enumerate()
+        for (i, s) in [Suits::Clubs, Suits::Hearts, Suits::Spades, Suits::Diamonds]
+            .iter()
+            .enumerate()
         {
             if suit == *s {
                 _idx += i;
@@ -127,10 +118,9 @@ impl Card {
             _ => panic!("Not a valid value"),
         };
         let suit: Suits = Suits::from_char(s[1] as char);
-        Self::new(Value::from(value), suit) 
+        Self::new(Value::from(value), suit)
     }
 }
-
 
 #[derive(Debug, Clone)]
 struct Hand {
@@ -146,21 +136,20 @@ impl Hand {
             hole: hole,
             hole_b: 1 << hole.0.idx | 1 << hole.1.idx,
             memo: HashMap::new(),
-            kicker: 0, 
-        } 
+            kicker: 0,
+        }
     }
 
-
     fn rank(&mut self, board: &u64) -> Rank {
-        let cards_key: u64 = self.hole_b | *board; 
+        let cards_key: u64 = self.hole_b | *board;
 
         if self.memo.contains_key(&cards_key) {
             return self.memo[&cards_key];
         }
 
         let mut _rank: Rank = Rank::HighCard;
-        
-        // TODO [optimization]: 
+
+        // TODO [optimization]:
         // The lower down the if-else statement,
         // the more likely the hand is. We are doing quite
         // a bit of branching here. TODO: Reduce amount of branching
@@ -195,11 +184,10 @@ impl Hand {
     fn is_royal_flush(&self, cards: &u64) -> bool {
         // mask := cards in a royal flush of suit clubs. shift left for next suit.
         let mut mask: u64 = 1 << 32 | 1 << 36 | 1 << 40 | 1 << 44 | 1 << 48;
-        (0..4)
-            .fold(false, |acc, x| { 
-                mask <<= x;
-                acc | ((mask & *cards) == mask)
-            })
+        (0..4).fold(false, |acc, x| {
+            mask <<= x;
+            acc | ((mask & *cards) == mask)
+        })
     }
 
     fn is_straight_flush(&mut self, cards: &u64) -> bool {
@@ -211,25 +199,27 @@ impl Hand {
         for i in 0..9 {
             for sh in 0..4 {
                 let valid: bool = mask & *cards == mask;
-                if (i < 8 && valid) || (i == 8 && valid && ((*cards & aces) & (1 << (48 + sh)) != 0)) {
+                if (i < 8 && valid)
+                    || (i == 8 && valid && ((*cards & aces) & (1 << (48 + sh)) != 0))
+                {
                     self.kicker = 13 - i as u32;
                     return true;
                 }
-                mask <<= 1; 
+                mask <<= 1;
             }
             // go to next largest straight flush
             mask >>= 8;
         }
         false
-    } 
+    }
 
     fn is_quads(&mut self, cards: &u64) -> bool {
         let mut mask: u64 = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
         let mut tmp: u32 = 0;
         for i in 0..13 {
             if mask & *cards == mask {
-                tmp = 14 - i; 
-            } 
+                tmp = 14 - i;
+            }
             mask >>= 4;
         }
 
@@ -246,8 +236,8 @@ impl Hand {
             mask >>= 4;
         }
         false
-    } 
-    
+    }
+
     fn is_fullhouse(&mut self, cards: &u64) -> bool {
         let mut mask: u64 = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
         let mut tmp: u32 = 0;
@@ -271,23 +261,23 @@ impl Hand {
                 if (mask & *cards).count_ones() >= 2 {
                     self.kicker = tmp * 100 + 14 - i;
                     return true;
-                } 
+                }
             }
             mask >>= 4;
         }
-        false 
+        false
     }
 
     fn is_flush(&mut self, cards: &u64) -> bool {
         // start with clubs
-        let mut mask: u64 = (0..52).step_by(4).fold(0, |acc, x| acc | (1 << x)); 
+        let mut mask: u64 = (0..52).step_by(4).fold(0, |acc, x| acc | (1 << x));
         for _ in 0..4 {
             let m: u64 = mask & *cards;
             if m.count_ones() >= 5 {
                 // this won't return the exact highest card value, but its a monotonic
                 // function and we save some instructions by avoiding needing to call %
                 // to compute exact value.
-                self.kicker = 64 - m.leading_zeros(); 
+                self.kicker = 64 - m.leading_zeros();
                 return true;
             }
             mask <<= 1;
@@ -302,9 +292,9 @@ impl Hand {
 
         for i in 0..13 {
             if *cards & repr != 0 {
-                key_bin |= 1 << (i + 1);  
+                key_bin |= 1 << (i + 1);
                 // if is ace
-                if i == 12 { 
+                if i == 12 {
                     key_bin |= 1;
                 }
             }
@@ -312,16 +302,15 @@ impl Hand {
         }
 
         let mut mask: u16 = 1 << 14 | 1 << 13 | 1 << 12 | 1 << 11 | 1 << 10;
-        
+
         for i in 0..11 {
             if mask & key_bin == mask {
-                self.kicker = 14 - i; 
+                self.kicker = 14 - i;
                 return true;
             }
             mask >>= 1;
         }
         false
-        
     }
 
     fn is_three_of_a_kind(&mut self, cards: &u64) -> bool {
@@ -368,7 +357,7 @@ impl Hand {
             if (mask & *cards).count_ones() == 2 {
                 tmp = tmp * 100 + 14 - i;
                 count += 1;
-            } 
+            }
             mask >>= 4;
         }
 
@@ -384,7 +373,7 @@ impl Hand {
                 return true;
             }
             mask >>= 4;
-    }
+        }
         false
     }
 
@@ -411,13 +400,13 @@ impl Hand {
             if mask & *cards != 0 {
                 tmp = tmp * 100 + 14 - i;
                 count += 1;
-            } 
+            }
             if count == 4 {
                 self.kicker = tmp;
                 return true;
             }
-            mask >>= 4; 
-        } 
+            mask >>= 4;
+        }
         false
     }
 
@@ -431,7 +420,7 @@ impl Hand {
                 tmp = tmp * 100 + 14 - i;
                 count += 1;
             }
-            
+
             if count == 5 {
                 self.kicker = tmp;
                 break;
@@ -442,10 +431,12 @@ impl Hand {
 
     fn from_string(s: String) -> Self {
         let (h1, h2) = s.split_at(2);
-        Hand::new((Card::from_string(h1.to_string()), Card::from_string(h2.to_string())))
+        Hand::new((
+            Card::from_string(h1.to_string()),
+            Card::from_string(h2.to_string()),
+        ))
     }
 }
-
 
 #[derive(Debug, Clone)]
 struct Game {
@@ -455,13 +446,9 @@ struct Game {
 
 impl Game {
     pub fn new(hero_pos: usize, hands: Vec<Hand>) -> Self {
-        Game {
-            hero_pos,
-            hands,
-        }
+        Game { hero_pos, hands }
     }
 }
-
 
 #[derive(Debug, Clone)]
 struct BitSet {
@@ -471,17 +458,14 @@ struct BitSet {
 
 impl BitSet {
     fn new() -> Self {
-        BitSet {
-            s: 0,
-            length: 0,
-        }
+        BitSet { s: 0, length: 0 }
     }
 
     fn add(&mut self, idx: usize) {
         if !self.contains(idx) {
             self.s |= 1 << idx;
             self.length += 1;
-        } 
+        }
     }
 
     fn remove(&mut self, idx: usize) {
@@ -504,7 +488,6 @@ impl BitSet {
         self.s |= *board;
     }
 }
-
 
 #[derive(Debug, Clone)]
 struct Brancher {
@@ -540,12 +523,15 @@ impl Brancher {
         if let Some(val) = self.memo.get(&self.drawn.s) {
             return *val;
         }
-    
+
         if board.count_ones() == 5 {
             let hero_rank = self.hero.rank(board);
             let hero_kicker = self.hero.kicker;
 
-            let beats_all = self.game.hands.iter_mut()
+            let beats_all = self
+                .game
+                .hands
+                .iter_mut()
                 .enumerate()
                 .filter(|&(i, _)| i != self.game.hero_pos)
                 .all(|(_, hand)| {
@@ -554,7 +540,7 @@ impl Brancher {
                 });
             let val: f32 = if beats_all { 1. } else { 0. };
             self.memo.insert(self.drawn.s, val);
-            return val;    
+            return val;
         }
 
         let mut pb: f32 = 0.;
@@ -572,7 +558,7 @@ impl Brancher {
     }
 
     fn branch_parallel(&self, nthreads: usize) -> f32 {
-        println!("Running on {:} threads.", nthreads); 
+        println!("Running on {:} threads.", nthreads);
 
         let step: usize = 52 / nthreads;
         let chunks: Vec<(usize, usize)> = (0..52)
@@ -612,7 +598,7 @@ impl Brancher {
         self.drawn.add(card_idx);
         *board |= 1 << card_idx;
     }
-    
+
     fn remove_from_end_of_board(&mut self, card_idx: usize, board: &mut u64) {
         self.drawn.remove(card_idx);
         *board -= 1 << card_idx;
@@ -631,7 +617,7 @@ impl Brancher {
 
         let nthreads: usize = 8;
         let p: f32;
-            
+
         if self.board.count_ones() >= 4 {
             let mut board: u64 = self.board.clone();
             p = self.branch(&mut board);
@@ -642,7 +628,6 @@ impl Brancher {
         println!("Equity is {:}.", p);
         p
     }
-
 }
 
 pub fn parse_input_and_solve() {
@@ -651,8 +636,8 @@ pub fn parse_input_and_solve() {
     we get the following result on a board with 0 cards
     running on 8 threads:
 
-        1 thread (Python): 60 seconds 
-        1 thread (Rust): 60 seconds 
+        1 thread (Python): 60 seconds
+        1 thread (Rust): 60 seconds
         8 threads - Without sharing memo: 60 seconds
         8 threads - With sharing memo: 16 seconds.
         8 threads with opt-level 3 + sharing memo: 5 seconds.
@@ -665,7 +650,9 @@ pub fn parse_input_and_solve() {
     loop {
         println!("# active players [0 to exit]:");
         let mut nplayers = String::new();
-        io::stdin().read_line(&mut nplayers).expect("Failed to get console input");
+        io::stdin()
+            .read_line(&mut nplayers)
+            .expect("Failed to get console input");
         let nplayers = nplayers.trim().parse::<i32>().expect("Failed to parse int");
         if nplayers == 0 {
             break;
@@ -675,19 +662,25 @@ pub fn parse_input_and_solve() {
 
         println!("Your starting hand: ");
         let mut x = String::new();
-        io::stdin().read_line(&mut x).expect("Failed to get console input");
+        io::stdin()
+            .read_line(&mut x)
+            .expect("Failed to get console input");
         hs.push(Hand::from_string(x));
 
         println!("Opponent hands: ");
-        for _ in 0..(nplayers-1) {
+        for _ in 0..(nplayers - 1) {
             let mut x = String::new();
-            io::stdin().read_line(&mut x).expect("Failed to get console input");
+            io::stdin()
+                .read_line(&mut x)
+                .expect("Failed to get console input");
             hs.push(Hand::from_string(x));
         }
-            
+
         println!("Board: ");
         let mut bd: String = String::new();
-        io::stdin().read_line(&mut bd).expect("Failed to get console input");
+        io::stdin()
+            .read_line(&mut bd)
+            .expect("Failed to get console input");
 
         let bd: Vec<char> = bd.chars().collect();
         let mut board: u64 = 0;
@@ -700,7 +693,7 @@ pub fn parse_input_and_solve() {
             let card: Card = Card::from_string(c);
             board |= 1 << card.idx;
         }
-        
+
         let game = Game::new(0, hs);
 
         println!("START: {:?}", SystemTime::now());
@@ -715,7 +708,7 @@ pub fn solve(hands: Vec<String>, bd: String) -> f32 {
     let mut hs: Vec<Hand> = Vec::new();
 
     for hand in hands {
-        hs.push(Hand::from_string(hand));        
+        hs.push(Hand::from_string(hand));
     }
 
     let bd: Vec<char> = bd.chars().collect();

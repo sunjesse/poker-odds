@@ -10,9 +10,7 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "NLH Poker Equity Calculator",
         options,
-        Box::new(|_| {
-            Ok(Box::<MyApp>::default())
-        }),
+        Box::new(|_| Ok(Box::<MyApp>::default())),
     )
 }
 
@@ -20,7 +18,7 @@ struct MyApp {
     nplayers: usize,
     board: String,
     equity: Option<f32>,
-    hands: Vec<String>
+    hands: Vec<String>,
 }
 
 impl Default for MyApp {
@@ -49,15 +47,19 @@ impl eframe::App for MyApp {
 
             for i in 0..self.nplayers {
                 ui.horizontal(|ui| {
-                    let label = if i == 0 { "Your Hand: " } else { "Opponent Hand: " };
-                    let name_label = ui.label(label); 
+                    let label = if i == 0 {
+                        "Your Hand: "
+                    } else {
+                        "Opponent Hand: "
+                    };
+                    let name_label = ui.label(label);
                     ui.text_edit_singleline(&mut self.hands[i])
                         .labelled_by(name_label.id);
                 });
             }
 
             ui.horizontal(|ui| {
-                let name_label = ui.label("Board: "); 
+                let name_label = ui.label("Board: ");
                 ui.text_edit_singleline(&mut self.board)
                     .labelled_by(name_label.id);
             });
