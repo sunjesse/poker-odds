@@ -65,7 +65,7 @@ impl eframe::App for MyApp {
             });
 
             if ui.button("Solve").clicked() {
-                self.equity = Some(solve(self.hands.clone(), self.board.clone()));
+                self.equity = Some(solve(&self.hands, &self.board));
             }
             if let Some(equity) = self.equity {
                 ui.label(format!("Your hand's equity is: {:?}", equity));

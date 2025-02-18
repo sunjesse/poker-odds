@@ -630,6 +630,7 @@ impl Brancher {
     }
 }
 
+#[allow(dead_code)]
 pub fn parse_input_and_solve() {
     /*
     By threading & sharing memo table across threads,
@@ -703,12 +704,12 @@ pub fn parse_input_and_solve() {
     }
 }
 
-pub fn solve(hands: Vec<String>, bd: String) -> f32 {
+pub fn solve(hands: &Vec<String>, bd: &String) -> f32 {
     let memo: Arc<DashMap<u64, f32>> = Arc::new(DashMap::new());
     let mut hs: Vec<Hand> = Vec::new();
 
     for hand in hands {
-        hs.push(Hand::from_string(hand));
+        hs.push(Hand::from_string(hand.to_string()));
     }
 
     let bd: Vec<char> = bd.chars().collect();
