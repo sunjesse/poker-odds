@@ -728,5 +728,5 @@ pub fn solve(hands: Vec<String>, bd: String) -> f32 {
 
     let game = Game::new(0, hs);
     let mut brancher = Brancher::new(game, board, memo.clone());
-    return brancher.compute_equity();
+    brancher.compute_equity()
 }
