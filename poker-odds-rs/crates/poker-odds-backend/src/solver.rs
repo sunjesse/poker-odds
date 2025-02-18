@@ -709,3 +709,24 @@ pub fn parse_input_and_solve() {
         println!("END: {:?}", SystemTime::now());
     }
 }
+
+pub fn solve(hands: Vec<String>, bd: String) -> f32 {
+    let memo: Arc<DashMap<u64, f32>> = Arc::new(DashMap::new());
+    let mut hs: Vec<Hand> = Vec::new();
+
+    for hand in hands {
+        hs.push(Hand::from_string(hand));        
+    }
+
+    let bd: Vec<char> = bd.chars().collect();
+    let mut board: u64 = 0;
+    for chunk in bd.chunks(2) {
+        let c: String = chunk.iter().collect();
+        let card: Card = Card::from_string(c);
+        board |= 1 << card.idx;
+    }
+
+    let game = Game::new(0, hs);
+    let mut brancher = Brancher::new(game, board, memo.clone());
+    return brancher.compute_equity();
+}
