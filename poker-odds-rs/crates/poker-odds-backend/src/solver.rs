@@ -630,6 +630,47 @@ impl Brancher {
     }
 }
 
+pub struct Solver {
+    memo: Arc<DashMap<u64, f32>>,
+}
+
+impl Solver {
+    pub fn new() -> Self {
+        Solver {
+            memo: Arc::new(DashMap::new()),
+        }
+    }
+
+    pub fn solve(&self, hands: &Vec<String>, bd: &String) -> f32 {
+        let mut hs: Vec<Hand> = Vec::new();
+
+        for hand in hands {
+            hs.push(Hand::from_string(hand.to_string()));
+        }
+
+        let bd: Vec<char> = bd.chars().collect();
+        let mut board: u64 = 0;
+        for chunk in bd.chunks(2) {
+            let c: String = chunk.iter().collect();
+            let card: Card = Card::from_string(c);
+            board |= 1 << card.idx;
+        }
+
+        let game = Game::new(0, hs);
+        let mut brancher = Brancher::new(game, board, self.memo.clone());
+        println!("START: {:?}", SystemTime::now());
+        let p: f32 = brancher.compute_equity();
+        println!("END: {:?}", SystemTime::now());
+        p
+    }
+}
+
+fn pop_extra_characters(s: &mut String) {
+    while matches!(s.chars().last(), Some('\n')) {
+        s.pop();
+    }
+}
+
 #[allow(dead_code)]
 pub fn parse_input_and_solve() {
     /*
@@ -646,7 +687,8 @@ pub fn parse_input_and_solve() {
         8 threads w/ opt l3 + memo as dashmap: < 1 seconds
         The row above + all computations binary - remove heap allocation during Hand.rank call: < 400 ms
     */
-    let memo: Arc<DashMap<u64, f32>> = Arc::new(DashMap::new());
+
+    let solution: Solver = Solver::new();
 
     loop {
         println!("# active players [0 to exit]:");
@@ -659,22 +701,21 @@ pub fn parse_input_and_solve() {
             break;
         }
 
-        let mut hs: Vec<Hand> = Vec::new();
+        let mut hs: Vec<String> = Vec::new();
 
-        println!("Your starting hand: ");
-        let mut x = String::new();
-        io::stdin()
-            .read_line(&mut x)
-            .expect("Failed to get console input");
-        hs.push(Hand::from_string(x));
-
-        println!("Opponent hands: ");
-        for _ in 0..(nplayers - 1) {
+        for i in 0..nplayers {
+            if i == 0 {
+                println!("Your starting hand: ");
+            } else {
+                println!("Opponent {} hand: ", i);
+            }
             let mut x = String::new();
             io::stdin()
                 .read_line(&mut x)
                 .expect("Failed to get console input");
-            hs.push(Hand::from_string(x));
+
+            pop_extra_characters(&mut x);
+            hs.push(x);
         }
 
         println!("Board: ");
@@ -682,45 +723,7 @@ pub fn parse_input_and_solve() {
         io::stdin()
             .read_line(&mut bd)
             .expect("Failed to get console input");
-
-        let bd: Vec<char> = bd.chars().collect();
-        let mut board: u64 = 0;
-
-        for chunk in bd.chunks(2) {
-            let c: String = chunk.iter().collect();
-            if c == "\n" {
-                continue;
-            }
-            let card: Card = Card::from_string(c);
-            board |= 1 << card.idx;
-        }
-
-        let game = Game::new(0, hs);
-
-        println!("START: {:?}", SystemTime::now());
-        let mut brancher = Brancher::new(game, board, memo.clone());
-        brancher.compute_equity();
-        println!("END: {:?}", SystemTime::now());
+        pop_extra_characters(&mut bd);
+        solution.solve(&hs, &bd);
     }
-}
-
-pub fn solve(hands: &Vec<String>, bd: &String) -> f32 {
-    let memo: Arc<DashMap<u64, f32>> = Arc::new(DashMap::new());
-    let mut hs: Vec<Hand> = Vec::new();
-
-    for hand in hands {
-        hs.push(Hand::from_string(hand.to_string()));
-    }
-
-    let bd: Vec<char> = bd.chars().collect();
-    let mut board: u64 = 0;
-    for chunk in bd.chunks(2) {
-        let c: String = chunk.iter().collect();
-        let card: Card = Card::from_string(c);
-        board |= 1 << card.idx;
-    }
-
-    let game = Game::new(0, hs);
-    let mut brancher = Brancher::new(game, board, memo.clone());
-    brancher.compute_equity()
 }

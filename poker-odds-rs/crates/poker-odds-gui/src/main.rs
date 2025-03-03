@@ -36,7 +36,7 @@ impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("NLH Poker Equity Calculator");
-            ui.add(egui::Slider::new(&mut self.nplayers, 2..=10).text("# players:"));
+            ui.add(egui::Slider::new(&mut self.nplayers, 2..=10).text("# players"));
 
             while self.hands.len() < self.nplayers {
                 self.hands.push("".to_string());
