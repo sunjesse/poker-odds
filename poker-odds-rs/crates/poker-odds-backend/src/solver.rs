@@ -152,8 +152,8 @@ impl Hand {
         // TODO [optimization]:
         // The lower down the if-else statement,
         // the more likely the hand is. We are doing quite
-        // a bit of branching here. TODO: Reduce amount of branching
-        // needed?
+        // a bit of branching here, and perhaps branch
+        // mispredictions.
 
         if self.is_royal_flush(&cards_key) {
             _rank = Rank::RoyalFlush;
@@ -185,7 +185,7 @@ impl Hand {
         // mask := cards in a royal flush of suit clubs. shift left for next suit.
         let mut mask: u64 = 1 << 32 | 1 << 36 | 1 << 40 | 1 << 44 | 1 << 48;
         (0..4).fold(false, |acc, x| {
-            mask <<= (x != 0) as u64; // shift by 1 if it's not the first iteration. 
+            mask <<= (x != 0) as u64; // shift by 1 if it's not the first iteration.
             acc | ((mask & *cards) == mask)
         })
     }
