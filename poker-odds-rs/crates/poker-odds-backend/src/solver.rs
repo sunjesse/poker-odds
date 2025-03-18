@@ -185,7 +185,7 @@ impl Hand {
         // mask := cards in a royal flush of suit clubs. shift left for next suit.
         let mut mask: u64 = 1 << 32 | 1 << 36 | 1 << 40 | 1 << 44 | 1 << 48;
         (0..4).fold(false, |acc, x| {
-            mask <<= x;
+            mask <<= (x != 0) as u64; // shift by 1 if it's not the first iteration. 
             acc | ((mask & *cards) == mask)
         })
     }
