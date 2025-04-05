@@ -1,6 +1,8 @@
 use dashmap::DashMap;
 use std::collections::HashMap;
 use std::io;
+use std::simd::u64x16;
+use std::simd::cmp::SimdPartialEq;
 use std::sync::Arc;
 use std::thread;
 use std::time::SystemTime;
@@ -214,26 +216,22 @@ impl Hand {
     }
 
     fn is_quads(&mut self, cards: &u64) -> bool {
-        let mut mask: u64 = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
-        let mut tmp: u32 = 0;
-        for i in 0..13 {
-            if mask & *cards == mask {
-                tmp = 14 - i;
-            }
-            mask >>= 4;
-        }
+        let repr = u64x16::from_array([
+            0xF, 0xF << 4, 0xF << 8, 0xF << 12,
+            0xF << 16, 0xF << 20, 0xF << 24, 0xF << 28,
+            0xF << 32, 0xF << 36, 0xF << 40, 0xF << 44,
+            0xF << 48, 0, 0, 0,
+        ]);
 
-        if tmp == 0 {
-            return false;
-        }
-
-        mask = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
-        for i in 0..13 {
-            if i + tmp != 14 && mask & *cards != 0 {
-                self.kicker = tmp * 100 + 14 - i;
+        let hits = u64x16::splat(*cards) & repr;
+        let mask = hits.simd_eq(repr).to_array(); 
+        
+        for i in (0..13).rev() {
+            if mask[i] {
+                self.kicker = i as u32;
                 return true;
             }
-            mask >>= 4;
+            
         }
         false
     }
@@ -286,19 +284,25 @@ impl Hand {
     }
 
     fn is_straight(&mut self, cards: &u64) -> bool {
-        let mut key_bin: u16 = 0;
-        // the following is all twos
-        let mut repr: u64 = 1 | 1 << 1 | 1 << 2 | 1 << 3;
+        let repr = u64x16::from_array([
+            0xF, 0xF << 4, 0xF << 8, 0xF << 12,
+            0xF << 16, 0xF << 20, 0xF << 24, 0xF << 28,
+            0xF << 32, 0xF << 36, 0xF << 40, 0xF << 44,
+            0xF << 48, 0, 0, 0,
+        ]);
 
-        for i in 0..13 {
-            if *cards & repr != 0 {
+        let hits = u64x16::splat(*cards) & repr;
+
+        let mask = hits.simd_ne(u64x16::splat(0)); 
+
+        let mut key_bin: u16 = 0;
+        for (i, hit) in mask.to_array().iter().enumerate().take(13) {
+            if *hit {
                 key_bin |= 1 << (i + 1);
-                // if is ace
                 if i == 12 {
                     key_bin |= 1;
                 }
             }
-            repr <<= 4;
         }
 
         let mut mask: u16 = 1 << 14 | 1 << 13 | 1 << 12 | 1 << 11 | 1 << 10;

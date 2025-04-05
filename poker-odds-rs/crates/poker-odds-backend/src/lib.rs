@@ -1,3 +1,5 @@
+#![feature(portable_simd)]
+
 mod solver;
 
 pub fn solve(hands: &Vec<String>, board: &String) -> f32 {
