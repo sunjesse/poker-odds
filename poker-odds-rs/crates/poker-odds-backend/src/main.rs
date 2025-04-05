@@ -1,3 +1,5 @@
+#![feature(portable_simd)]
+
 mod solver;
 use solver::parse_input_and_solve;
 
