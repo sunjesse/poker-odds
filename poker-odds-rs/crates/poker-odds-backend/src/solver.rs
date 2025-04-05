@@ -293,11 +293,11 @@ impl Hand {
 
         let hits = u64x16::splat(*cards) & repr;
 
-        let mask = hits.simd_ne(u64x16::splat(0)); 
+        let mask = hits.simd_ne(u64x16::splat(0)).to_array(); 
 
         let mut key_bin: u16 = 0;
-        for (i, hit) in mask.to_array().iter().enumerate().take(13) {
-            if *hit {
+        for i in 0..13 {
+            if mask[i] {
                 key_bin |= 1 << (i + 1);
                 if i == 12 {
                     key_bin |= 1;
