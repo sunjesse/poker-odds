@@ -293,26 +293,20 @@ impl Hand {
 
         let hits = u64x16::splat(*cards) & repr;
 
-        let mask = hits.simd_ne(u64x16::splat(0)).to_array(); 
+        let mask = hits.simd_ne(u64x16::splat(0)); 
 
-        let mut key_bin: u16 = 0;
-        for i in 0..13 {
-            if mask[i] {
-                key_bin |= 1 << (i + 1);
-                if i == 12 {
-                    key_bin |= 1;
-                }
-            }
-        }
+        // shift by one as cards assumes 2 is smallest bit.
+        // need to make room for ace.
+        let mut key_bin = mask.to_bitmask() << 1;
+        key_bin |= ((1 << 13) & key_bin > 0) as u64;
 
-        let mut mask: u16 = 1 << 14 | 1 << 13 | 1 << 12 | 1 << 11 | 1 << 10;
-
+        let mut m: u64 = 1 << 14 | 1 << 13 | 1 << 12 | 1 << 11 | 1 << 10;
         for i in 0..11 {
-            if mask & key_bin == mask {
+            if m & key_bin == m {
                 self.kicker = 14 - i;
                 return true;
             }
-            mask >>= 1;
+            m >>= 1;
         }
         false
     }
