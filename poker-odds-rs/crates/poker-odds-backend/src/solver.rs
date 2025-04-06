@@ -216,24 +216,23 @@ impl Hand {
     }
 
     fn is_quads(&mut self, cards: &u64) -> bool {
-        let repr = u64x16::from_array([
+        let repr: u64x16 = u64x16::from_array([
             0xF, 0xF << 4, 0xF << 8, 0xF << 12,
             0xF << 16, 0xF << 20, 0xF << 24, 0xF << 28,
             0xF << 32, 0xF << 36, 0xF << 40, 0xF << 44,
             0xF << 48, 0, 0, 0,
         ]);
 
-        let hits = u64x16::splat(*cards) & repr;
-        let mask = hits.simd_eq(repr).to_array(); 
-        
-        for i in (0..13).rev() {
-            if mask[i] {
-                self.kicker = i as u32;
-                return true;
-            }
-            
+        let hits: u64x16 = u64x16::splat(*cards) & repr;
+        let mut mask: u64 = hits.simd_eq(repr).to_bitmask();
+        // zero out the initial 3 set bits.
+        mask ^= 1 << 13 | 1 << 14 | 1 << 15;
+
+        if mask == 0 { // more likely
+            return false; 
         }
-        false
+        self.kicker = 64 - mask.leading_zeros() as u32;
+        true
     }
 
     fn is_fullhouse(&mut self, cards: &u64) -> bool {
@@ -284,31 +283,42 @@ impl Hand {
     }
 
     fn is_straight(&mut self, cards: &u64) -> bool {
-        let repr = u64x16::from_array([
+        // 1: first convert to a bit map of the values present.
+        let repr: u64x16 = u64x16::from_array([
             0xF, 0xF << 4, 0xF << 8, 0xF << 12,
             0xF << 16, 0xF << 20, 0xF << 24, 0xF << 28,
             0xF << 32, 0xF << 36, 0xF << 40, 0xF << 44,
             0xF << 48, 0, 0, 0,
         ]);
 
-        let hits = u64x16::splat(*cards) & repr;
-
-        let mask = hits.simd_ne(u64x16::splat(0)); 
+        let hits: u64x16 = u64x16::splat(*cards) & repr;
 
         // shift by one as cards assumes 2 is smallest bit.
         // need to make room for ace.
-        let mut key_bin = mask.to_bitmask() << 1;
-        key_bin |= ((1 << 13) & key_bin > 0) as u64;
+        let mut mask: u64 = hits.simd_ne(u64x16::splat(0)).to_bitmask() << 1; 
 
-        let mut m: u64 = 1 << 14 | 1 << 13 | 1 << 12 | 1 << 11 | 1 << 10;
-        for i in 0..11 {
-            if m & key_bin == m {
-                self.kicker = 14 - i;
-                return true;
-            }
-            m >>= 1;
-        }
-        false
+        mask |= ((1 << 13) & mask > 0) as u64;
+
+        // 2: then, find 5 bits in a row.
+        // the below is (1 << 14 | 1 << 13 | 1 << 12 | 1 << 11 | 1 << 10)
+        // shifted all the way down 10 times
+        let ms: u64x16 = u64x16::from_array([
+            0, 0, 0, 0,
+            0, 31, 62, 124,
+            248, 496, 992, 1984,
+            3968, 7936, 15872, 31744
+        ]);
+
+        let h: u64x16 = u64x16::splat(mask) & ms;
+        let mut z: u64 = h.simd_eq(ms).to_bitmask();    
+        // zero out the last 5 bits
+        z ^= 1 << 0 | 1 << 1 | 1 << 2 | 1 << 3 | 1 << 4;
+        
+        if z == 0 { // more likely
+            return false;
+        } 
+        self.kicker = 63 - z.leading_zeros() as u32;
+        true
     }
 
     fn is_three_of_a_kind(&mut self, cards: &u64) -> bool {
