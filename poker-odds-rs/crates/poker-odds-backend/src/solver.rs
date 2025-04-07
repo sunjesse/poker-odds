@@ -1,8 +1,9 @@
 use dashmap::DashMap;
 use std::collections::HashMap;
 use std::io;
-use std::simd::u64x16;
-use std::simd::cmp::SimdPartialEq;
+use std::simd::cmp::{SimdPartialEq, SimdPartialOrd};
+use std::simd::num::SimdUint;
+use std::simd::{u64x16, u64x4};
 use std::sync::Arc;
 use std::thread;
 use std::time::SystemTime;
@@ -161,13 +162,13 @@ impl Hand {
             _rank = Rank::RoyalFlush;
         } else if self.is_straight_flush(&cards_key) {
             _rank = Rank::StraightFlush;
-        } else if self.is_quads(&cards_key) {
+        } else if self.is_quads_simd(&cards_key) {
             _rank = Rank::Quads;
         } else if self.is_fullhouse(&cards_key) {
             _rank = Rank::FullHouse;
-        } else if self.is_flush(&cards_key) {
+        } else if self.is_flush_simd(&cards_key) {
             _rank = Rank::Flush;
-        } else if self.is_straight(&cards_key) {
+        } else if self.is_straight_simd(&cards_key) {
             _rank = Rank::Straight;
         } else if self.is_three_of_a_kind(&cards_key) {
             _rank = Rank::Trips;
@@ -215,12 +216,37 @@ impl Hand {
         false
     }
 
+    #[allow(dead_code)]
     fn is_quads(&mut self, cards: &u64) -> bool {
+        let mut mask: u64 = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
+        for i in 0..13 {
+            if mask & *cards == mask {
+                self.kicker = 14 - i as u32;
+                return true;
+            }
+            mask >>= 4;
+        }
+        false
+    }
+
+    fn is_quads_simd(&mut self, cards: &u64) -> bool {
         let repr: u64x16 = u64x16::from_array([
-            0xF, 0xF << 4, 0xF << 8, 0xF << 12,
-            0xF << 16, 0xF << 20, 0xF << 24, 0xF << 28,
-            0xF << 32, 0xF << 36, 0xF << 40, 0xF << 44,
-            0xF << 48, 0, 0, 0,
+            0xF,
+            0xF << 4,
+            0xF << 8,
+            0xF << 12,
+            0xF << 16,
+            0xF << 20,
+            0xF << 24,
+            0xF << 28,
+            0xF << 32,
+            0xF << 36,
+            0xF << 40,
+            0xF << 44,
+            0xF << 48,
+            0,
+            0,
+            0,
         ]);
 
         let hits: u64x16 = u64x16::splat(*cards) & repr;
@@ -228,8 +254,9 @@ impl Hand {
         // zero out the initial 3 set bits.
         mask ^= 1 << 13 | 1 << 14 | 1 << 15;
 
-        if mask == 0 { // more likely
-            return false; 
+        if mask == 0 {
+            // more likely
+            return false;
         }
         self.kicker = 64 - mask.leading_zeros() as u32;
         true
@@ -265,6 +292,7 @@ impl Hand {
         false
     }
 
+    #[allow(dead_code)]
     fn is_flush(&mut self, cards: &u64) -> bool {
         // start with clubs
         let mut mask: u64 = (0..52).step_by(4).fold(0, |acc, x| acc | (1 << x));
@@ -282,20 +310,84 @@ impl Hand {
         false
     }
 
+    fn is_flush_simd(&mut self, cards: &u64) -> bool {
+        let suit_mask: u64 = (0..52).step_by(4).fold(0, |acc, x| acc | (1 << x));
+
+        let repr: u64x4 =
+            u64x4::from_array([suit_mask, suit_mask << 1, suit_mask << 2, suit_mask << 3]);
+
+        let hits: u64x4 = u64x4::splat(*cards) & repr;
+        let mask: u64 = hits.count_ones().simd_ge(u64x4::splat(5)).to_bitmask();
+
+        if mask == 0 {
+            // more likely
+            return false;
+        }
+
+        let d: u64 = 63 - mask.leading_zeros() as u64;
+        let cmask: u64 = (suit_mask << d) & cards;
+
+        // less leading zeros, higher the flush
+        // so we invert the value to get a kicker val.
+        self.kicker = 64 - cmask.leading_zeros();
+        true
+    }
+
+    #[allow(dead_code)]
     fn is_straight(&mut self, cards: &u64) -> bool {
+        let mut key_bin: u16 = 0;
+        // the following is all twos
+        let mut repr: u64 = 1 | 1 << 1 | 1 << 2 | 1 << 3;
+
+        for i in 0..13 {
+            if *cards & repr != 0 {
+                key_bin |= 1 << (i + 1);
+                // if is ace
+                if i == 12 {
+                    key_bin |= 1;
+                }
+            }
+            repr <<= 4;
+        }
+
+        let mut mask: u16 = 1 << 14 | 1 << 13 | 1 << 12 | 1 << 11 | 1 << 10;
+
+        for i in 0..11 {
+            if mask & key_bin == mask {
+                self.kicker = 14 - i;
+                return true;
+            }
+            mask >>= 1;
+        }
+        false
+    }
+
+    fn is_straight_simd(&mut self, cards: &u64) -> bool {
         // 1: first convert to a bit map of the values present.
         let repr: u64x16 = u64x16::from_array([
-            0xF, 0xF << 4, 0xF << 8, 0xF << 12,
-            0xF << 16, 0xF << 20, 0xF << 24, 0xF << 28,
-            0xF << 32, 0xF << 36, 0xF << 40, 0xF << 44,
-            0xF << 48, 0, 0, 0,
+            0xF,
+            0xF << 4,
+            0xF << 8,
+            0xF << 12,
+            0xF << 16,
+            0xF << 20,
+            0xF << 24,
+            0xF << 28,
+            0xF << 32,
+            0xF << 36,
+            0xF << 40,
+            0xF << 44,
+            0xF << 48,
+            0,
+            0,
+            0,
         ]);
 
         let hits: u64x16 = u64x16::splat(*cards) & repr;
 
         // shift by one as cards assumes 2 is smallest bit.
         // need to make room for ace.
-        let mut mask: u64 = hits.simd_ne(u64x16::splat(0)).to_bitmask() << 1; 
+        let mut mask: u64 = hits.simd_ne(u64x16::splat(0)).to_bitmask() << 1;
 
         mask |= ((1 << 13) & mask > 0) as u64;
 
@@ -303,20 +395,18 @@ impl Hand {
         // the below is (1 << 14 | 1 << 13 | 1 << 12 | 1 << 11 | 1 << 10)
         // shifted all the way down 10 times
         let ms: u64x16 = u64x16::from_array([
-            0, 0, 0, 0,
-            0, 31, 62, 124,
-            248, 496, 992, 1984,
-            3968, 7936, 15872, 31744
+            0, 0, 0, 0, 0, 31, 62, 124, 248, 496, 992, 1984, 3968, 7936, 15872, 31744,
         ]);
 
         let h: u64x16 = u64x16::splat(mask) & ms;
-        let mut z: u64 = h.simd_eq(ms).to_bitmask();    
+        let mut z: u64 = h.simd_eq(ms).to_bitmask();
         // zero out the last 5 bits
         z ^= 1 << 0 | 1 << 1 | 1 << 2 | 1 << 3 | 1 << 4;
-        
-        if z == 0 { // more likely
+
+        if z == 0 {
+            // more likely
             return false;
-        } 
+        }
         self.kicker = 63 - z.leading_zeros() as u32;
         true
     }
