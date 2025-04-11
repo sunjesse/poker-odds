@@ -223,7 +223,7 @@ impl Hand {
         let mut base_mask: u64 = 1 << 28 | 1 << 32 | 1 << 36 | 1 << 40 | 1 << 44;
         let mut aces: u64 = 1 << 48;
 
-        const ZERO_OUT_MASK: u64 = 0b1111111000000000;
+        const ZERO_OUT_MASK: u64 = 0b1111111 << 9;
 
         for _ in 0..4 {
             let regs: u64x16 = u64x16::from_array([
@@ -297,7 +297,7 @@ impl Hand {
         let hits: u64x16 = *cards_splat & regs;
         let mut mask: u64 = hits.simd_eq(regs).to_bitmask();
         // zero out the initial 3 set bits.
-        mask ^= 1 << 13 | 1 << 14 | 1 << 15;
+        mask ^= 0b111 << 13;
 
         if mask == 0 {
             // more likely
@@ -490,7 +490,7 @@ impl Hand {
         let h: u64x16 = u64x16::splat(mask) & ms;
         let mut z: u64 = h.simd_eq(ms).to_bitmask();
         // zero out the last 5 bits
-        z ^= 1 << 0 | 1 << 1 | 1 << 2 | 1 << 3 | 1 << 4;
+        z ^= 0b11111;
 
         if z == 0 {
             // more likely
