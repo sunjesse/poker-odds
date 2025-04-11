@@ -317,6 +317,7 @@ impl Hand {
             u64x4::from_array([suit_mask, suit_mask << 1, suit_mask << 2, suit_mask << 3]);
 
         let hits: u64x4 = u64x4::splat(*cards) & repr;
+        // only the last 4 bits matter, rest are zero
         let mask: u64 = hits.count_ones().simd_ge(u64x4::splat(5)).to_bitmask();
 
         if mask == 0 {
@@ -324,7 +325,10 @@ impl Hand {
             return false;
         }
 
+        // find the suit offset.
+        // d = 0 if clubs, 1 if hearts, 2 if spades, 3 if diamonds
         let d: u64 = 63 - mask.leading_zeros() as u64;
+        // all the cards present that are of the flush suit.
         let cmask: u64 = (suit_mask << d) & cards;
 
         // less leading zeros, higher the flush
