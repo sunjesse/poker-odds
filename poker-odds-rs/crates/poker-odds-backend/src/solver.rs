@@ -230,7 +230,7 @@ impl Hand {
     }
 
     fn is_quads_simd(&mut self, cards: &u64) -> bool {
-        let repr: u64x16 = u64x16::from_array([
+        let regs: u64x16 = u64x16::from_array([
             0xF,
             0xF << 4,
             0xF << 8,
@@ -249,8 +249,8 @@ impl Hand {
             0,
         ]);
 
-        let hits: u64x16 = u64x16::splat(*cards) & repr;
-        let mut mask: u64 = hits.simd_eq(repr).to_bitmask();
+        let hits: u64x16 = u64x16::splat(*cards) & regs;
+        let mut mask: u64 = hits.simd_eq(regs).to_bitmask();
         // zero out the initial 3 set bits.
         mask ^= 1 << 13 | 1 << 14 | 1 << 15;
 
@@ -353,10 +353,10 @@ impl Hand {
     fn is_flush_simd(&mut self, cards: &u64) -> bool {
         let suit_mask: u64 = (0..52).step_by(4).fold(0, |acc, x| acc | (1 << x));
 
-        let repr: u64x4 =
+        let regs: u64x4 =
             u64x4::from_array([suit_mask, suit_mask << 1, suit_mask << 2, suit_mask << 3]);
 
-        let hits: u64x4 = u64x4::splat(*cards) & repr;
+        let hits: u64x4 = u64x4::splat(*cards) & regs;
         // only the last 4 bits matter, rest are zero
         let mask: u64 = hits.count_ones().simd_ge(u64x4::splat(5)).to_bitmask();
 
@@ -408,7 +408,7 @@ impl Hand {
 
     fn is_straight_simd(&mut self, cards: &u64) -> bool {
         // 1: first convert to a bit map of the values present.
-        let repr: u64x16 = u64x16::from_array([
+        let regs: u64x16 = u64x16::from_array([
             0xF,
             0xF << 4,
             0xF << 8,
@@ -427,7 +427,7 @@ impl Hand {
             0,
         ]);
 
-        let hits: u64x16 = u64x16::splat(*cards) & repr;
+        let hits: u64x16 = u64x16::splat(*cards) & regs;
 
         // shift by one as cards assumes 2 is smallest bit.
         // need to make room for ace.
