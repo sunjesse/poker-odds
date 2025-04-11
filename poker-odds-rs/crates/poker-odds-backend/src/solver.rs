@@ -170,7 +170,7 @@ impl Hand {
             _rank = Rank::Flush;
         } else if self.is_straight_simd(&cards_key) {
             _rank = Rank::Straight;
-        } else if self.is_three_of_a_kind(&cards_key) {
+        } else if self.is_three_of_a_kind_simd(&cards_key) {
             _rank = Rank::Trips;
         } else if self.is_two_pair(&cards_key) {
             _rank = Rank::TwoPair;
@@ -499,6 +499,7 @@ impl Hand {
         true
     }
 
+    #[allow(dead_code)]
     fn is_three_of_a_kind(&mut self, cards: &u64) -> bool {
         // this assumes its not a full house
         let mut mask: u64 = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
@@ -531,6 +532,48 @@ impl Hand {
             mask >>= 4;
         }
         false
+    }
+
+    fn is_three_of_a_kind_simd(&mut self, cards: &u64) -> bool {
+        let regs: u64x16 = u64x16::from_array([
+            0xF,
+            0xF << 4,
+            0xF << 8,
+            0xF << 12,
+            0xF << 16,
+            0xF << 20,
+            0xF << 24,
+            0xF << 28,
+            0xF << 32,
+            0xF << 36,
+            0xF << 40,
+            0xF << 44,
+            0xF << 48,
+            0,
+            0,
+            0,
+        ]);
+
+        let hits_count_set: u64x16 = (u64x16::splat(*cards) & regs).count_ones();
+        // in theory there should only be 1 set bit, if more then its a fullhouse.
+        // assumption: assume only at most 1 set bit in val3
+        let val3: u64 = hits_count_set.simd_eq(u64x16::splat(3)).to_bitmask();
+
+        if val3 == 0 {
+            return false;
+        }
+
+        let mut val1: u64 = hits_count_set.simd_eq(u64x16::splat(1)).to_bitmask();
+
+        // subtract from 64 instead of 63 as we do not want tmp to be 0.
+        let mut tmp: u32 = 64 - val3.leading_zeros(); // the val that 3peats
+        for _ in 0..2 {
+            let d = 64 - val1.leading_zeros();
+            tmp = tmp * 100 + d;
+            val1 ^= 1 << (d - 1); // unset this bit
+        }
+        self.kicker = tmp;
+        true
     }
 
     fn is_two_pair(&mut self, cards: &u64) -> bool {
