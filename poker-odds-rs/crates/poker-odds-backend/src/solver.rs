@@ -242,7 +242,7 @@ impl Hand {
                 0,
                 0,
                 0,
-            ]); 
+            ]);
 
             let hits: u64x16 = cards_splat & regs;
             let mut mask: u64 = hits.simd_eq(regs).to_bitmask();
@@ -359,8 +359,8 @@ impl Hand {
 
         let hits_count_set: u64x16 = (u64x16::splat(*cards) & regs).count_ones();
         let eq3: u64 = hits_count_set.simd_eq(u64x16::splat(3)).to_bitmask();
-        let ge2: u64 = hits_count_set.simd_ge(u64x16::splat(2)).to_bitmask(); 
-        
+        let ge2: u64 = hits_count_set.simd_ge(u64x16::splat(2)).to_bitmask();
+
         if eq3 == 0 {
             return false;
         }
@@ -369,13 +369,13 @@ impl Hand {
         let ge2_xor_eq3_mask: u64 = ge2 ^ (1 << shift_eq3);
         if ge2_xor_eq3_mask == 0 {
             return false;
-        } 
+        }
         let shift_ge2: u64 = 63 - ge2_xor_eq3_mask.leading_zeros() as u64;
 
         self.kicker = (shift_eq3 * 100 + shift_ge2) as u32;
         true
     }
-  
+
     #[allow(dead_code)]
     fn is_flush(&mut self, cards: &u64) -> bool {
         // start with clubs
