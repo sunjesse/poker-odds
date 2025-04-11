@@ -636,14 +636,14 @@ impl Hand {
         }
 
         let val1: u64 = hits_count_set.simd_eq(u64x16::splat(1)).to_bitmask();
-        
+
         let mut tmp: u32 = 0;
         for _ in 0..2 {
             let d: u32 = 64 - val2.leading_zeros();
             tmp = tmp * 100 + d;
-            val2 ^= 1 << (d - 1); 
+            val2 ^= 1 << (d - 1);
         }
-        
+
         self.kicker = tmp * 100 + (64 - val1.leading_zeros());
         true
     }
@@ -707,21 +707,20 @@ impl Hand {
         let val2: u64 = hits_count_set.simd_eq(u64x16::splat(2)).to_bitmask();
 
         if val2 == 0 {
-            return false
+            return false;
         }
 
         let mut val1: u64 = hits_count_set.simd_eq(u64x16::splat(1)).to_bitmask();
-        
+
         let mut tmp: u32 = 64 - val2.leading_zeros(); // val that is a pair
         for _ in 0..2 {
             let d: u32 = 64 - val1.leading_zeros();
             tmp = tmp * 100 + d;
-            val1 ^= 1 << (d - 1); 
+            val1 ^= 1 << (d - 1);
         }
-        
+
         self.kicker = tmp;
         true
-        
     }
 
     fn compute_kicker_for_high_card(&mut self, cards: &u64) {
