@@ -164,7 +164,7 @@ impl Hand {
             _rank = Rank::StraightFlush;
         } else if self.is_quads_simd(&cards_key) {
             _rank = Rank::Quads;
-        } else if self.is_fullhouse(&cards_key) {
+        } else if self.is_fullhouse_simd(&cards_key) {
             _rank = Rank::FullHouse;
         } else if self.is_flush_simd(&cards_key) {
             _rank = Rank::Flush;
@@ -262,6 +262,7 @@ impl Hand {
         true
     }
 
+    #[allow(dead_code)]
     fn is_fullhouse(&mut self, cards: &u64) -> bool {
         let mut mask: u64 = 1 << 51 | 1 << 50 | 1 << 49 | 1 << 48;
         let mut tmp: u32 = 0;
@@ -292,6 +293,45 @@ impl Hand {
         false
     }
 
+    fn is_fullhouse_simd(&mut self, cards: &u64) -> bool {
+        let regs: u64x16 = u64x16::from_array([
+            0xF,
+            0xF << 4,
+            0xF << 8,
+            0xF << 12,
+            0xF << 16,
+            0xF << 20,
+            0xF << 24,
+            0xF << 28,
+            0xF << 32,
+            0xF << 36,
+            0xF << 40,
+            0xF << 44,
+            0xF << 48,
+            0,
+            0,
+            0,
+        ]);
+
+        let hits_count_set: u64x16 = (u64x16::splat(*cards) & regs).count_ones();
+        let eq3: u64 = hits_count_set.simd_eq(u64x16::splat(3)).to_bitmask();
+        let ge2: u64 = hits_count_set.simd_ge(u64x16::splat(2)).to_bitmask(); 
+        
+        if eq3 == 0 {
+            return false;
+        }
+        let shift_eq3: u64 = 63 - eq3.leading_zeros() as u64;
+        // xor to zero out the top value with 3 occurences
+        let ge2_xor_eq3_mask: u64 = ge2 ^ (1 << shift_eq3);
+        if ge2_xor_eq3_mask == 0 {
+            return false;
+        } 
+        let shift_ge2: u64 = 63 - ge2_xor_eq3_mask.leading_zeros() as u64;
+
+        self.kicker = (shift_eq3 * 100 + shift_ge2) as u32;
+        true
+    }
+  
     #[allow(dead_code)]
     fn is_flush(&mut self, cards: &u64) -> bool {
         // start with clubs
