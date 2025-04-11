@@ -160,7 +160,7 @@ impl Hand {
 
         if self.is_royal_flush(&cards_key) {
             _rank = Rank::RoyalFlush;
-        } else if self.is_straight_flush(&cards_key) {
+        } else if self.is_straight_flush_simd(&cards_key) {
             _rank = Rank::StraightFlush;
         } else if self.is_quads_simd(&cards_key) {
             _rank = Rank::Quads;
@@ -193,6 +193,7 @@ impl Hand {
         })
     }
 
+    #[allow(dead_code)]
     fn is_straight_flush(&mut self, cards: &u64) -> bool {
         // start at king high straight flush of suit club.
         // no need to check royal flush as we check that before.
@@ -212,6 +213,49 @@ impl Hand {
             }
             // go to next largest straight flush
             mask >>= 8;
+        }
+        false
+    }
+
+    fn is_straight_flush_simd(&mut self, cards: &u64) -> bool {
+        let mut base_mask: u64 = 1 << 28 | 1 << 32 | 1 << 36 | 1 << 40 | 1 << 44;
+        let mut aces: u64 = 1 << 48;
+        let cards_splat: u64x16 = u64x16::splat(*cards);
+
+        const ZERO_OUT_MASK: u64 = 0b1111111000000000;
+
+        for _ in 0..4 {
+            let regs: u64x16 = u64x16::from_array([
+                base_mask >> 32 | aces,
+                base_mask >> 28,
+                base_mask >> 24,
+                base_mask >> 20,
+                base_mask >> 16,
+                base_mask >> 12,
+                base_mask >> 8,
+                base_mask >> 4,
+                base_mask,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            ]); 
+
+            let hits: u64x16 = cards_splat & regs;
+            let mut mask: u64 = hits.simd_eq(regs).to_bitmask();
+            // zero out first 7 bits in the last 16 bit chunk
+            mask ^= ZERO_OUT_MASK;
+
+            if mask == 0 {
+                base_mask <<= 1;
+                aces <<= 1;
+                continue;
+            }
+            self.kicker = 64 - mask.leading_zeros() as u32;
+            return true;
         }
         false
     }
