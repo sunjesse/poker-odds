@@ -296,7 +296,7 @@ impl Hand {
 
         let hits: u64x16 = *cards_splat & regs;
         let mut mask: u64 = hits.simd_eq(regs).to_bitmask();
-        // zero out the initial 3 set bits.
+        // zero out the top 3 set bits.
         mask ^= 0b111 << 13;
 
         if mask == 0 {
