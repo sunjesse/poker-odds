@@ -158,25 +158,25 @@ impl Hand {
         // a bit of branching here, and perhaps branch
         // mispredictions.
 
-        let cards_splat: u64x16 = u64x16::splat(cards_key);
+        let cards_vec: u64x16 = u64x16::splat(cards_key);
 
         if self.is_royal_flush(&cards_key) {
             _rank = Rank::RoyalFlush;
-        } else if self.is_straight_flush_simd(&cards_splat) {
+        } else if self.is_straight_flush_simd(&cards_vec) {
             _rank = Rank::StraightFlush;
-        } else if self.is_quads_simd(&cards_splat) {
+        } else if self.is_quads_simd(&cards_vec) {
             _rank = Rank::Quads;
-        } else if self.is_fullhouse_simd(&cards_splat) {
+        } else if self.is_fullhouse_simd(&cards_vec) {
             _rank = Rank::FullHouse;
         } else if self.is_flush_simd(&cards_key) {
             _rank = Rank::Flush;
-        } else if self.is_straight_simd(&cards_splat) {
+        } else if self.is_straight_simd(&cards_vec) {
             _rank = Rank::Straight;
-        } else if self.is_three_of_a_kind_simd(&cards_splat) {
+        } else if self.is_three_of_a_kind_simd(&cards_vec) {
             _rank = Rank::Trips;
-        } else if self.is_two_pair_simd(&cards_splat) {
+        } else if self.is_two_pair_simd(&cards_vec) {
             _rank = Rank::TwoPair;
-        } else if self.is_pair_simd(&cards_splat) {
+        } else if self.is_pair_simd(&cards_vec) {
             _rank = Rank::Pair;
         } else {
             // _rank is Rank::HighCard.
@@ -219,7 +219,7 @@ impl Hand {
         false
     }
 
-    fn is_straight_flush_simd(&mut self, cards_splat: &u64x16) -> bool {
+    fn is_straight_flush_simd(&mut self, cards_vec: &u64x16) -> bool {
         let mut base_mask: u64 = 1 << 28 | 1 << 32 | 1 << 36 | 1 << 40 | 1 << 44;
         let mut aces: u64 = 1 << 48;
 
@@ -245,7 +245,7 @@ impl Hand {
                 0,
             ]);
 
-            let hits: u64x16 = *cards_splat & regs;
+            let hits: u64x16 = *cards_vec & regs;
             let mut mask: u64 = hits.simd_eq(regs).to_bitmask();
             // zero out first 7 bits in the last 16 bit chunk
             mask ^= ZERO_OUT_MASK;
@@ -274,7 +274,7 @@ impl Hand {
         false
     }
 
-    fn is_quads_simd(&mut self, cards_splat: &u64x16) -> bool {
+    fn is_quads_simd(&mut self, cards_vec: &u64x16) -> bool {
         let regs: u64x16 = u64x16::from_array([
             0xF,
             0xF << 4,
@@ -294,7 +294,7 @@ impl Hand {
             0,
         ]);
 
-        let hits: u64x16 = *cards_splat & regs;
+        let hits: u64x16 = *cards_vec & regs;
         let mut mask: u64 = hits.simd_eq(regs).to_bitmask();
         // zero out the top 3 set bits.
         mask ^= 0b111 << 13;
@@ -338,7 +338,7 @@ impl Hand {
         false
     }
 
-    fn is_fullhouse_simd(&mut self, cards_splat: &u64x16) -> bool {
+    fn is_fullhouse_simd(&mut self, cards_vec: &u64x16) -> bool {
         let regs: u64x16 = u64x16::from_array([
             0xF,
             0xF << 4,
@@ -358,7 +358,7 @@ impl Hand {
             0,
         ]);
 
-        let hits_count_set: u64x16 = (*cards_splat & regs).count_ones();
+        let hits_count_set: u64x16 = (*cards_vec & regs).count_ones();
         let eq3: u64 = hits_count_set.simd_eq(u64x16::splat(3)).to_bitmask();
         let ge2: u64 = hits_count_set.simd_ge(u64x16::splat(2)).to_bitmask();
 
@@ -451,7 +451,7 @@ impl Hand {
         false
     }
 
-    fn is_straight_simd(&mut self, cards_splat: &u64x16) -> bool {
+    fn is_straight_simd(&mut self, cards_vec: &u64x16) -> bool {
         // 1: first convert to a bit map of the values present.
         let regs: u64x16 = u64x16::from_array([
             0xF,
@@ -472,7 +472,7 @@ impl Hand {
             0,
         ]);
 
-        let hits: u64x16 = *cards_splat & regs;
+        let hits: u64x16 = *cards_vec & regs;
 
         // shift by one as cards assumes 2 is smallest bit.
         // need to make room for ace.
@@ -535,7 +535,7 @@ impl Hand {
         false
     }
 
-    fn is_three_of_a_kind_simd(&mut self, cards_splat: &u64x16) -> bool {
+    fn is_three_of_a_kind_simd(&mut self, cards_vec: &u64x16) -> bool {
         let regs: u64x16 = u64x16::from_array([
             0xF,
             0xF << 4,
@@ -555,7 +555,7 @@ impl Hand {
             0,
         ]);
 
-        let hits_count_set: u64x16 = (*cards_splat & regs).count_ones();
+        let hits_count_set: u64x16 = (*cards_vec & regs).count_ones();
         // in theory there should only be 1 set bit, if more then its a fullhouse.
         // assumption: assume only at most 1 set bit in val3
         let val3: u64 = hits_count_set.simd_eq(u64x16::splat(3)).to_bitmask();
@@ -608,7 +608,7 @@ impl Hand {
         false
     }
 
-    fn is_two_pair_simd(&mut self, cards_splat: &u64x16) -> bool {
+    fn is_two_pair_simd(&mut self, cards_vec: &u64x16) -> bool {
         let regs: u64x16 = u64x16::from_array([
             0xF,
             0xF << 4,
@@ -628,7 +628,7 @@ impl Hand {
             0,
         ]);
 
-        let hits_count_set: u64x16 = (*cards_splat & regs).count_ones();
+        let hits_count_set: u64x16 = (*cards_vec & regs).count_ones();
         let mut val2: u64 = hits_count_set.simd_eq(u64x16::splat(2)).to_bitmask();
 
         if val2.count_ones() < 2 {
@@ -682,7 +682,7 @@ impl Hand {
         false
     }
 
-    fn is_pair_simd(&mut self, cards_splat: &u64x16) -> bool {
+    fn is_pair_simd(&mut self, cards_vec: &u64x16) -> bool {
         let regs: u64x16 = u64x16::from_array([
             0xF,
             0xF << 4,
@@ -703,7 +703,7 @@ impl Hand {
         ]);
 
         // in theory there should only be 1 set bit, otherwise its 2 pair.
-        let hits_count_set: u64x16 = (*cards_splat & regs).count_ones();
+        let hits_count_set: u64x16 = (*cards_vec & regs).count_ones();
         let val2: u64 = hits_count_set.simd_eq(u64x16::splat(2)).to_bitmask();
 
         if val2 == 0 {
