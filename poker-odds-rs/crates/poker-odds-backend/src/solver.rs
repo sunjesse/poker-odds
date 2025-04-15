@@ -478,6 +478,7 @@ impl Hand {
         // need to make room for ace.
         let mut mask: u64 = hits.simd_ne(u64x16::splat(0)).to_bitmask() << 1;
 
+        // if ace exists, then set the smallest bit too.
         mask |= ((1 << 13) & mask > 0) as u64;
 
         // 2: then, find 5 bits in a row.
