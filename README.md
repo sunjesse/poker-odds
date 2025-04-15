@@ -1,6 +1,9 @@
 # NLH Poker Equity Calculator
 An equity calculator for NLH poker players figuring out how much to bet / call that is plus EV.
 
+![](https://github.com/sunjesse/poker-odds/blob/main/demo/demo.gif)
+
+
 **What makes it so fast?**
 - **Multi-threaded goodness:** I used a branching algorithm with memoization synchronized across threads optimized for concurrent reads using DashMap / rwlocks - as the algorithm is read-heavy.
 - **Lots of bit manipulation:** we use the first 52 bits in a u64 int to represent the state of the board. To derive the rank of each hand, it just involves bit manipulations which is fast.
@@ -14,7 +17,5 @@ Note that 48 choose 5 is approximately ~1.7m -> the algorithm goes through a 5 l
 I first built a proof-of-concept in Python - this setup above resulted in a runtime of approximately 60-70 seconds. After migrating to Rust, an unoptimized implementation still nets around the same time as the Python implementation.
 
 After all these optimizations listed above, we were able to bring down the runtime to approximately 400ms. **Up to a 175x speed up!**
-
-![](https://github.com/sunjesse/poker-odds/blob/main/demo/demo.gif)
 
 Try it yourself by going into `poker-odds-rs/crates/poker-odds-gui` and run `cargo run`. You'll need the `nightly` build as we are using SIMD instrinsics.
