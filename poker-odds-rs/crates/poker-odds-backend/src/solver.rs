@@ -850,7 +850,7 @@ impl Brancher {
                 .filter(|&(i, _)| i != self.game.hero_pos)
                 .all(|(_, hand)| {
                     let v = hand.rank(board);
-                    hero_rank > v || (hero_rank == v && hero_kicker > hand.kicker)
+                    hero_rank > v || (hero_rank == v && hero_kicker >= hand.kicker)
                 });
             let val: f32 = if beats_all { 1. } else { 0. };
             self.memo.insert(self.drawn.s, val);
@@ -951,7 +951,7 @@ pub struct Solver {
 impl Solver {
     pub fn new() -> Self {
         Solver {
-            memo: Arc::new(DashMap::new()),
+            memo: Arc::new(DashMap::with_shard_amount(64)),
         }
     }
 
