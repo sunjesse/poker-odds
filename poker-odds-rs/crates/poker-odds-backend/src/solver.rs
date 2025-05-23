@@ -1,7 +1,7 @@
 use dashmap::DashMap;
+use num_cpus;
 use std::collections::HashMap;
 use std::io;
-use num_cpus;
 use std::simd::cmp::{SimdPartialEq, SimdPartialOrd};
 use std::simd::num::SimdUint;
 use std::simd::{u64x16, u64x4};
