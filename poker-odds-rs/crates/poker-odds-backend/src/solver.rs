@@ -1,6 +1,7 @@
 use dashmap::DashMap;
 use std::collections::HashMap;
 use std::io;
+use num_cpus;
 use std::simd::cmp::{SimdPartialEq, SimdPartialOrd};
 use std::simd::num::SimdUint;
 use std::simd::{u64x16, u64x4};
@@ -871,7 +872,9 @@ impl Brancher {
         pb
     }
 
-    fn branch_parallel(&self, nthreads: usize) -> f32 {
+    fn branch_parallel(&self) -> f32 {
+        // use up all the cores we got
+        let nthreads: usize = num_cpus::get_physical();
         println!("Running on {:} threads.", nthreads);
 
         let step: usize = 52 / nthreads;
@@ -929,14 +932,13 @@ impl Brancher {
             return *val;
         }
 
-        let nthreads: usize = 8;
         let p: f32;
 
         if self.board.count_ones() >= 4 {
             let mut board: u64 = self.board.clone();
             p = self.branch(&mut board);
         } else {
-            p = self.branch_parallel(nthreads);
+            p = self.branch_parallel();
             self.memo.insert(self.drawn.s, p);
         }
         println!("Equity is {:}.", p);

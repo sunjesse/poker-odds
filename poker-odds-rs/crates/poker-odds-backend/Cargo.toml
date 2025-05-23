@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 dashmap = "6.1.0"
+num_cpus = "1.16.0"
 rand = "0.8.5"
 strum = "0.26.3"
 strum_macros = "0.26.4"
