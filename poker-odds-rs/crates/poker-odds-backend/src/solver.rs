@@ -249,7 +249,7 @@ impl Hand {
             let hits: u64x16 = *cards_vec & lanes;
             let mut mask: u64 = hits.simd_eq(lanes).to_bitmask();
             // zero out first 7 bits in the last 16 bit chunk
-            mask ^= ZERO_OUT_MASK;
+            mask &= !(ZERO_OUT_MASK);
 
             if mask == 0 {
                 base_mask <<= 1;
@@ -298,7 +298,7 @@ impl Hand {
         let hits: u64x16 = *cards_vec & lanes;
         let mut mask: u64 = hits.simd_eq(lanes).to_bitmask();
         // zero out the top 3 set bits.
-        mask ^= 0b111 << 13;
+        mask &= !(0b111 << 13);
 
         if mask == 0 {
             // more likely
@@ -492,7 +492,7 @@ impl Hand {
         let h: u64x16 = u64x16::splat(mask) & ms;
         let mut z: u64 = h.simd_eq(ms).to_bitmask();
         // zero out the last 5 bits
-        z ^= 0b11111;
+        z &= !(0b11111);
 
         if z == 0 {
             // more likely
@@ -573,7 +573,7 @@ impl Hand {
         for _ in 0..2 {
             let d: u32 = 64 - val1.leading_zeros();
             tmp = tmp * 100 + d;
-            val1 ^= 1 << (d - 1); // unset this bit
+            val1 &= !(1 << (d - 1)); // unset this bit
         }
         self.kicker = tmp;
         true
@@ -643,7 +643,7 @@ impl Hand {
         for _ in 0..2 {
             let d: u32 = 64 - val2.leading_zeros();
             tmp = tmp * 100 + d;
-            val2 ^= 1 << (d - 1);
+            val2 &= !(1 << (d - 1));
         }
 
         self.kicker = tmp * 100 + (64 - val1.leading_zeros());
@@ -718,7 +718,7 @@ impl Hand {
         for _ in 0..2 {
             let d: u32 = 64 - val1.leading_zeros();
             tmp = tmp * 100 + d;
-            val1 ^= 1 << (d - 1);
+            val1 &= !(1 << (d - 1));
         }
 
         self.kicker = tmp;
